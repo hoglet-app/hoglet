@@ -1046,7 +1046,7 @@ class _ActivityScreenState extends State<ActivityScreen>
           for (var i = 0; i < columns.length; i++)
             SizedBox(
               width: widths[i],
-              child: _buildColumnCell(columns[i], event),
+              child: _buildColumnCellWithTooltip(columns[i], event),
             ),
         ],
       ),
@@ -1067,6 +1067,19 @@ class _ActivityScreenState extends State<ActivityScreen>
           },
         );
       },
+    );
+  }
+
+  Widget _buildColumnCellWithTooltip(ColumnSpec column, EventItem event) {
+    final payload = _buildTooltipPayload(column, event);
+    final message = const JsonEncoder.withIndent('  ').convert(payload);
+
+    return Tooltip(
+      message: message,
+      waitDuration: const Duration(milliseconds: 200),
+      showDuration: const Duration(seconds: 4),
+      preferBelow: false,
+      child: _buildColumnCell(column, event),
     );
   }
 
@@ -1121,6 +1134,74 @@ class _ActivityScreenState extends State<ActivityScreen>
           overflow: TextOverflow.ellipsis,
         );
     }
+  }
+
+  Map<String, dynamic> _buildTooltipPayload(ColumnSpec column, EventItem event) {
+    return {
+      'label': column.label,
+      'property_key': _columnPropertyKey(column),
+      'category': _columnCategoryLabel(column),
+      'value_preview': _truncateValue(_columnValuePreview(column, event)),
+    };
+  }
+
+  String _columnPropertyKey(ColumnSpec column) {
+    switch (column.kind) {
+      case ColumnKind.builtin:
+        switch (column.id) {
+          case BuiltinColumnId.event:
+            return 'event';
+          case BuiltinColumnId.person:
+            return 'distinct_id';
+          case BuiltinColumnId.url:
+            return r'$current_url';
+          case BuiltinColumnId.library:
+            return r'$lib';
+          case BuiltinColumnId.time:
+            return 'timestamp';
+          case null:
+            return column.label;
+        }
+      case ColumnKind.property:
+        return column.propertyKey ?? column.label;
+    }
+  }
+
+  String _columnCategoryLabel(ColumnSpec column) {
+    final category = column.category ?? ColumnCategory.event;
+    return category.name;
+  }
+
+  String _columnValuePreview(ColumnSpec column, EventItem event) {
+    switch (column.kind) {
+      case ColumnKind.builtin:
+        switch (column.id) {
+          case BuiltinColumnId.event:
+            return event.eventName;
+          case BuiltinColumnId.person:
+            return event.distinctId;
+          case BuiltinColumnId.url:
+            return event.urlLabel;
+          case BuiltinColumnId.library:
+            return event.libraryLabel;
+          case BuiltinColumnId.time:
+            return event.timeAgoLabel;
+          case null:
+            return '—';
+        }
+      case ColumnKind.property:
+        final key = column.propertyKey ?? '';
+        final value = event.properties[key] ??
+            (key.isNotEmpty && !key.startsWith(r'$')
+                ? event.properties['\$$key']
+                : null);
+        return value?.toString() ?? '—';
+    }
+  }
+
+  String _truncateValue(String value, {int maxLength = 120}) {
+    if (value.length <= maxLength) return value;
+    return '${value.substring(0, maxLength - 1)}…';
   }
 
   ColumnSpec _columnForKey(String key) {
