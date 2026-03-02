@@ -1,7 +1,5 @@
 import 'dart:convert';
 
-import 'package:characters/characters.dart';
-
 class EventItem {
   EventItem({
     required this.uuid,
@@ -39,7 +37,7 @@ class EventItem {
 
   String get personInitial {
     if (distinctId.isEmpty) return '•';
-    return distinctId.characters.first.toUpperCase();
+    return distinctId[0].toUpperCase();
   }
 
   String get urlLabel {

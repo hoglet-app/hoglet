@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -21,6 +21,7 @@ class _ActivityScreenState extends State<ActivityScreen>
   static const _keyCustomHost = 'posthog_custom_host';
   static const _keyProjectId = 'posthog_project_id';
   static const _keyApiKey = 'posthog_personal_api_key';
+  static const _keyVisibleColumns = 'hoglet_visible_columns';
 
   final _client = PosthogClient();
 
@@ -30,22 +31,26 @@ class _ActivityScreenState extends State<ActivityScreen>
 
   final List<EventItem> _events = [];
   bool _isLoading = false;
-  bool _autoRefresh = false;
   bool _showApiKey = false;
-  String? _statusMessage;
-  Timer? _timer;
   HostMode _hostMode = HostMode.us;
+
+  final List<String> _visibleColumnKeys = [];
+  final Map<String, ColumnSpec> _columnRegistry = {};
+  final List<ColumnOption> _availableColumns = [];
+  bool _isLoadingColumns = false;
+  String _columnSearch = '';
+  ColumnCategory _selectedCategory = ColumnCategory.event;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _registerBuiltinColumns();
     _loadSettings();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     _customHostController.dispose();
     _projectIdController.dispose();
     _apiKeyController.dispose();
@@ -67,6 +72,7 @@ class _ActivityScreenState extends State<ActivityScreen>
     final customHost = await _storage.read(key: _keyCustomHost) ?? '';
     final projectId = await _storage.read(key: _keyProjectId) ?? '';
     final apiKey = await _storage.read(key: _keyApiKey) ?? '';
+    final visibleColumnsRaw = await _storage.read(key: _keyVisibleColumns);
 
     if (!mounted) return;
 
@@ -76,6 +82,8 @@ class _ActivityScreenState extends State<ActivityScreen>
       _projectIdController.text = projectId;
       _apiKeyController.text = apiKey;
     });
+
+    _restoreVisibleColumns(visibleColumnsRaw);
 
     if (host.isNotEmpty && _hostMode != HostMode.custom) {
       _customHostController.text = '';
@@ -100,6 +108,10 @@ class _ActivityScreenState extends State<ActivityScreen>
     );
     await _storage.write(key: _keyProjectId, value: projectId);
     await _storage.write(key: _keyApiKey, value: apiKey);
+    await _storage.write(
+      key: _keyVisibleColumns,
+      value: jsonEncode(_visibleColumnKeys),
+    );
 
     if (!mounted) return;
 
@@ -121,27 +133,17 @@ class _ActivityScreenState extends State<ActivityScreen>
       value: _apiKeyController.text.trim(),
     );
     await _storage.write(key: _keyHost, value: _normalizeHost(_effectiveHost));
+    await _storage.write(
+      key: _keyVisibleColumns,
+      value: jsonEncode(_visibleColumnKeys),
+    );
   }
 
   void _setStatus(String message) {
     if (!mounted) return;
-    setState(() {
-      _statusMessage = message;
-    });
-  }
-
-  void _toggleAutoRefresh(bool value) {
-    setState(() {
-      _autoRefresh = value;
-    });
-
-    _timer?.cancel();
-
-    if (value) {
-      _timer = Timer.periodic(const Duration(seconds: 10), (_) {
-        _fetchEvents();
-      });
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   String _normalizeHost(String input) {
@@ -176,7 +178,6 @@ class _ActivityScreenState extends State<ActivityScreen>
 
     setState(() {
       _isLoading = true;
-      _statusMessage = null;
     });
 
     try {
@@ -198,10 +199,11 @@ class _ActivityScreenState extends State<ActivityScreen>
     } catch (error) {
       _setStatus('Failed to fetch events: $error');
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -429,7 +431,11 @@ class _ActivityScreenState extends State<ActivityScreen>
               ),
             ),
             const Spacer(),
-            _headerButton('Configure columns', Icons.view_column_outlined),
+            _headerButton(
+              'Configure columns',
+              Icons.view_column_outlined,
+              onPressed: _openConfigureColumns,
+            ),
             const SizedBox(width: 8),
             _headerButton('Export', Icons.file_download_outlined),
             const SizedBox(width: 8),
@@ -440,6 +446,460 @@ class _ActivityScreenState extends State<ActivityScreen>
         _buildEventsTable(),
       ],
     );
+  }
+
+  void _openConfigureColumns() {
+    _loadAvailableColumns();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: const Color(0xFFF5F4EF),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 820),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        'Configure columns',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Visible columns (drag to reorder)',
+                    style: TextStyle(color: Color(0xFF6F6A63)),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildVisibleColumnsList(),
+                  const SizedBox(height: 16),
+                  _buildAvailableColumnsSection(),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      OutlinedButton(
+                        onPressed: _resetColumns,
+                        child: const Text('Reset to defaults'),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Close'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Save'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildVisibleColumnsList() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE3DED6)),
+      ),
+      child: ReorderableListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: _visibleColumnKeys.length,
+        onReorder: (oldIndex, newIndex) {
+          setState(() {
+            if (newIndex > oldIndex) {
+              newIndex -= 1;
+            }
+            final item = _visibleColumnKeys.removeAt(oldIndex);
+            _visibleColumnKeys.insert(newIndex, item);
+          });
+          _persistSettings();
+        },
+        itemBuilder: (context, index) {
+          final column = _columnForKey(_visibleColumnKeys[index]);
+          return ListTile(
+            key: ValueKey(column.key),
+            leading: const Icon(Icons.drag_indicator),
+            title: Text(column.label),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  onPressed: () {},
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18, color: Color(0xFFF15A24)),
+                  onPressed: () {
+                    setState(() {
+                      _visibleColumnKeys.remove(column.key);
+                    });
+                    _persistSettings();
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildAvailableColumnsSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE3DED6)),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search),
+                hintText:
+                    'Search event properties, feature flags, person properties, sessions',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                isDense: true,
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _columnSearch = value;
+                });
+              },
+            ),
+          ),
+          const Divider(height: 1, color: Color(0xFFE3DED6)),
+          SizedBox(
+            height: 220,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 180,
+                  child: ListView(
+                    padding: const EdgeInsets.all(12),
+                    children: [
+                      _categoryChip(
+                        'Event properties: ${_countForCategory(ColumnCategory.event)}',
+                        selected: _selectedCategory == ColumnCategory.event,
+                        onTap: () => _selectCategory(ColumnCategory.event),
+                      ),
+                      const SizedBox(height: 8),
+                      _categoryChip(
+                        'Feature flags: 0',
+                        selected: _selectedCategory == ColumnCategory.flags,
+                        onTap: () => _selectCategory(ColumnCategory.flags),
+                      ),
+                      const SizedBox(height: 8),
+                      _categoryChip(
+                        'Person properties: ${_countForCategory(ColumnCategory.person)}',
+                        selected: _selectedCategory == ColumnCategory.person,
+                        onTap: () => _selectCategory(ColumnCategory.person),
+                      ),
+                      const SizedBox(height: 8),
+                      _categoryChip(
+                        'Session properties: ${_countForCategory(ColumnCategory.session)}',
+                        selected: _selectedCategory == ColumnCategory.session,
+                        onTap: () => _selectCategory(ColumnCategory.session),
+                      ),
+                      const SizedBox(height: 8),
+                      _categoryChip('SQL expression'),
+                    ],
+                  ),
+                ),
+                const VerticalDivider(width: 1, color: Color(0xFFE3DED6)),
+                Expanded(
+                  child: _isLoadingColumns
+                      ? const Center(child: CircularProgressIndicator())
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(12),
+                          itemBuilder: (context, index) {
+                            final column = _filteredAvailableColumns[index];
+                            return _availableColumnRow(column);
+                          },
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1, color: Color(0xFFE3DED6)),
+                          itemCount: _filteredAvailableColumns.length,
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _categoryChip(
+    String text, {
+    bool selected = false,
+    VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFFFEFE7) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE3DED6)),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: selected ? const Color(0xFFF15A24) : const Color(0xFF1C1B19),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _availableColumnRow(ColumnOption column) {
+    return ListTile(
+      dense: true,
+      leading: const Icon(Icons.ssid_chart, size: 18),
+      title: Text(column.label),
+      trailing: IconButton(
+        icon: const Icon(Icons.add_circle_outline),
+        onPressed: () {
+          if (_visibleColumnKeys.contains(column.key)) return;
+          setState(() {
+            _visibleColumnKeys.add(column.key);
+          });
+          _persistSettings();
+        },
+      ),
+    );
+  }
+
+  void _resetColumns() {
+    setState(() {
+      _visibleColumnKeys
+        ..clear()
+        ..addAll(_defaultVisibleKeys());
+    });
+    _persistSettings();
+  }
+
+  List<ColumnOption> get _filteredAvailableColumns {
+    final search = _columnSearch.trim().toLowerCase();
+    return _availableColumns.where((column) {
+      if (column.category != _selectedCategory) return false;
+      if (search.isEmpty) return true;
+      return column.label.toLowerCase().contains(search);
+    }).toList();
+  }
+
+  int _countForCategory(ColumnCategory category) {
+    return _availableColumns.where((c) => c.category == category).length;
+  }
+
+  void _selectCategory(ColumnCategory category) {
+    setState(() {
+      _selectedCategory = category;
+    });
+  }
+
+  Future<void> _loadAvailableColumns() async {
+    if (_isLoadingColumns) return;
+
+    final host = _normalizeHost(_effectiveHost);
+    final projectId = _projectIdController.text.trim();
+    final apiKey = _apiKeyController.text.trim();
+
+    if (host.isEmpty || projectId.isEmpty || apiKey.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingColumns = true;
+    });
+
+    try {
+      final eventProps = await _client.fetchPropertyDefinitions(
+        host: host,
+        projectId: projectId,
+        apiKey: apiKey,
+        type: 'event',
+      );
+      final personProps = await _client.fetchPropertyDefinitions(
+        host: host,
+        projectId: projectId,
+        apiKey: apiKey,
+        type: 'person',
+      );
+      final sessionProps = await _client.fetchPropertyDefinitions(
+        host: host,
+        projectId: projectId,
+        apiKey: apiKey,
+        type: 'session',
+      );
+
+      final options = <ColumnOption>[
+        ...eventProps.map(
+          (name) => ColumnOption.property(
+            category: ColumnCategory.event,
+            propertyKey: name,
+          ),
+        ),
+        ...personProps.map(
+          (name) => ColumnOption.property(
+            category: ColumnCategory.person,
+            propertyKey: name,
+          ),
+        ),
+        ...sessionProps.map(
+          (name) => ColumnOption.property(
+            category: ColumnCategory.session,
+            propertyKey: name,
+          ),
+        ),
+      ];
+
+      setState(() {
+        _availableColumns
+          ..clear()
+          ..addAll(options);
+        _refreshRegistry();
+      });
+    } catch (_) {
+      // ignore errors; UI will show empty list
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingColumns = false;
+        });
+      }
+    }
+  }
+
+  void _registerBuiltinColumns() {
+    final defaults = [
+      ColumnSpec.builtin(
+        id: BuiltinColumnId.event,
+        label: 'Event',
+        flex: 2,
+      ),
+      ColumnSpec.builtin(
+        id: BuiltinColumnId.person,
+        label: 'Person',
+        flex: 2,
+      ),
+      ColumnSpec.builtin(
+        id: BuiltinColumnId.url,
+        label: 'URL / Screen',
+        flex: 3,
+      ),
+      ColumnSpec.builtin(
+        id: BuiltinColumnId.library,
+        label: 'Library',
+        flex: 1,
+      ),
+      ColumnSpec.builtin(
+        id: BuiltinColumnId.time,
+        label: 'Time',
+        flex: 1,
+      ),
+    ];
+
+    for (final spec in defaults) {
+      _columnRegistry[spec.key] = spec;
+    }
+
+    if (_visibleColumnKeys.isEmpty) {
+      _visibleColumnKeys.addAll(_defaultVisibleKeys());
+    }
+  }
+
+  void _refreshRegistry() {
+    for (final option in _availableColumns) {
+      final spec = ColumnSpec.property(
+        propertyKey: option.propertyKey,
+        label: option.label,
+        category: option.category,
+      );
+      _columnRegistry[spec.key] = spec;
+    }
+
+    if (_visibleColumnKeys.isEmpty) {
+      _visibleColumnKeys.addAll(_defaultVisibleKeys());
+    }
+  }
+
+  List<String> _defaultVisibleKeys() {
+    return [
+      ColumnSpec.builtin(
+        id: BuiltinColumnId.event,
+        label: 'Event',
+        flex: 2,
+      ).key,
+      ColumnSpec.builtin(
+        id: BuiltinColumnId.person,
+        label: 'Person',
+        flex: 2,
+      ).key,
+      ColumnSpec.builtin(
+        id: BuiltinColumnId.url,
+        label: 'URL / Screen',
+        flex: 3,
+      ).key,
+      ColumnSpec.builtin(
+        id: BuiltinColumnId.library,
+        label: 'Library',
+        flex: 1,
+      ).key,
+      ColumnSpec.builtin(
+        id: BuiltinColumnId.time,
+        label: 'Time',
+        flex: 1,
+      ).key,
+    ];
+  }
+
+  void _restoreVisibleColumns(String? raw) {
+    if (raw == null || raw.isEmpty) {
+      if (_visibleColumnKeys.isEmpty) {
+        _visibleColumnKeys.addAll(_defaultVisibleKeys());
+      }
+      return;
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        _visibleColumnKeys
+          ..clear()
+          ..addAll(decoded.map((e) => e.toString()));
+      }
+    } catch (_) {}
+
+    if (_visibleColumnKeys.isEmpty) {
+      _visibleColumnKeys.addAll(_defaultVisibleKeys());
+    }
   }
 
   Widget _buildPlaceholder(String text) {
@@ -466,9 +926,9 @@ class _ActivityScreenState extends State<ActivityScreen>
     );
   }
 
-  Widget _headerButton(String text, IconData icon) {
+  Widget _headerButton(String text, IconData icon, {VoidCallback? onPressed}) {
     return OutlinedButton.icon(
-      onPressed: () {},
+      onPressed: onPressed ?? () {},
       icon: Icon(icon, size: 18),
       label: Text(text),
       style: OutlinedButton.styleFrom(
@@ -518,60 +978,33 @@ class _ActivityScreenState extends State<ActivityScreen>
   }
 
   Widget _buildTableHeader() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    final columns = _visibleColumnKeys.map(_columnForKey).toList();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Expanded(flex: 2, child: Text('EVENT')),
-          Expanded(flex: 2, child: Text('PERSON')),
-          Expanded(flex: 3, child: Text('URL / SCREEN')),
-          Expanded(child: Text('LIBRARY')),
-          Expanded(child: Text('TIME')),
+          for (final column in columns)
+            Expanded(
+              flex: column.flex,
+              child: Text(column.label.toUpperCase()),
+            ),
         ],
       ),
     );
   }
 
   Widget _buildEventRow(EventItem event) {
+    final columns = _visibleColumnKeys.map(_columnForKey).toList();
+
     return ListTile(
       dense: true,
       title: Row(
         children: [
-          Expanded(
-            flex: 2,
-            child: Text(event.eventName),
-          ),
-          Expanded(
-            flex: 2,
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 12,
-                  backgroundColor: const Color(0xFFDAD1C3),
-                  child: Text(
-                    event.personInitial,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    event.distinctId,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
+          for (final column in columns)
+            Expanded(
+              flex: column.flex,
+              child: _buildColumnCell(column, event),
             ),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text(
-              event.urlLabel,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Expanded(child: Text(event.libraryLabel)),
-          Expanded(child: Text(event.timeAgoLabel)),
         ],
       ),
       onTap: () {
@@ -591,6 +1024,170 @@ class _ActivityScreenState extends State<ActivityScreen>
           },
         );
       },
+    );
+  }
+
+  Widget _buildColumnCell(ColumnSpec column, EventItem event) {
+    switch (column.kind) {
+      case ColumnKind.builtin:
+        final builtinId = column.id;
+        if (builtinId == null) {
+          return const Text('—');
+        }
+        switch (builtinId) {
+          case BuiltinColumnId.event:
+            return Text(event.eventName);
+          case BuiltinColumnId.person:
+            return Row(
+              children: [
+                CircleAvatar(
+                  radius: 12,
+                  backgroundColor: const Color(0xFFDAD1C3),
+                  child: Text(
+                    event.personInitial,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    event.distinctId,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            );
+          case BuiltinColumnId.url:
+            return Text(
+              event.urlLabel,
+              overflow: TextOverflow.ellipsis,
+            );
+          case BuiltinColumnId.library:
+            return Text(event.libraryLabel);
+          case BuiltinColumnId.time:
+            return Text(event.timeAgoLabel);
+        }
+      case ColumnKind.property:
+        final key = column.propertyKey ?? '';
+        final value = event.properties[key] ??
+            (key.isNotEmpty && !key.startsWith(r'$')
+                ? event.properties['\$$key']
+                : null);
+        return Text(
+          value?.toString() ?? '—',
+          overflow: TextOverflow.ellipsis,
+        );
+    }
+  }
+
+  ColumnSpec _columnForKey(String key) {
+    return _columnRegistry[key] ?? ColumnSpec.fallback(key);
+  }
+}
+
+enum BuiltinColumnId {
+  event,
+  person,
+  url,
+  library,
+  time,
+}
+
+enum ColumnKind {
+  builtin,
+  property,
+}
+
+enum ColumnCategory {
+  event,
+  person,
+  session,
+  flags,
+}
+
+class ColumnSpec {
+  const ColumnSpec._({
+    required this.key,
+    required this.label,
+    required this.flex,
+    required this.kind,
+    this.id,
+    this.propertyKey,
+    this.category,
+  });
+
+  final String key;
+  final String label;
+  final int flex;
+  final ColumnKind kind;
+  final BuiltinColumnId? id;
+  final String? propertyKey;
+  final ColumnCategory? category;
+
+  factory ColumnSpec.builtin({
+    required BuiltinColumnId id,
+    required String label,
+    required int flex,
+  }) {
+    return ColumnSpec._(
+      key: 'builtin:${id.name}',
+      label: label,
+      flex: flex,
+      kind: ColumnKind.builtin,
+      id: id,
+    );
+  }
+
+  factory ColumnSpec.property({
+    required String propertyKey,
+    required String label,
+    required ColumnCategory category,
+  }) {
+    return ColumnSpec._(
+      key: 'prop:${category.name}:$propertyKey',
+      label: label,
+      flex: 2,
+      kind: ColumnKind.property,
+      propertyKey: propertyKey,
+      category: category,
+    );
+  }
+
+  factory ColumnSpec.fallback(String key) {
+    return ColumnSpec._(
+      key: key,
+      label: key,
+      flex: 2,
+      kind: ColumnKind.property,
+      propertyKey: key,
+      category: ColumnCategory.event,
+    );
+  }
+}
+
+class ColumnOption {
+  const ColumnOption._({
+    required this.key,
+    required this.label,
+    required this.category,
+    required this.propertyKey,
+  });
+
+  final String key;
+  final String label;
+  final ColumnCategory category;
+  final String propertyKey;
+
+  factory ColumnOption.property({
+    required ColumnCategory category,
+    required String propertyKey,
+  }) {
+    final label = propertyKey;
+    return ColumnOption._(
+      key: 'prop:${category.name}:$propertyKey',
+      label: label,
+      category: category,
+      propertyKey: propertyKey,
     );
   }
 }

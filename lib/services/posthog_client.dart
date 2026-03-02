@@ -50,4 +50,95 @@ class PosthogClient {
 
     return parsed;
   }
+
+  Future<List<String>> fetchPropertyDefinitions({
+    required String host,
+    required String projectId,
+    required String apiKey,
+    required String type,
+  }) async {
+    final candidates = [
+      Uri.parse(
+        '$host/api/projects/$projectId/property_definitions/?type=$type&limit=100',
+      ),
+      Uri.parse(
+        '$host/api/property_definition/?type=$type&limit=100&project_id=$projectId',
+      ),
+      Uri.parse(
+        '$host/api/property_definition/?type=$type&limit=100',
+      ),
+    ];
+
+    List<dynamic> results = [];
+    Exception? lastError;
+
+    for (final uri in candidates) {
+      try {
+        results = await _fetchPagedResults(
+          uri: uri,
+          apiKey: apiKey,
+        );
+        if (results.isNotEmpty) {
+          break;
+        }
+      } on Exception catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (results.isEmpty && lastError != null) {
+      throw lastError;
+    }
+
+    return results
+        .map((item) {
+          if (item is Map && item['name'] != null) {
+            return item['name'].toString();
+          }
+          if (item is Map && item['property'] != null) {
+            return item['property'].toString();
+          }
+          return item.toString();
+        })
+        .where((name) => name.trim().isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+  }
+
+  Future<List<dynamic>> _fetchPagedResults({
+    required Uri uri,
+    required String apiKey,
+  }) async {
+    final allResults = <dynamic>[];
+    Uri? next = uri;
+
+    while (next != null) {
+      final response = await http.get(
+        next,
+        headers: {
+          'Authorization': 'Bearer $apiKey',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        final reason = response.reasonPhrase ?? 'Request failed';
+        throw Exception('$reason (${response.statusCode})');
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map && decoded['results'] is List) {
+        allResults.addAll(decoded['results'] as List);
+      }
+
+      if (decoded is Map && decoded['next'] is String) {
+        final nextUrl = decoded['next'] as String;
+        next = nextUrl.isEmpty ? null : Uri.parse(nextUrl);
+      } else {
+        next = null;
+      }
+    }
+
+    return allResults;
+  }
 }
