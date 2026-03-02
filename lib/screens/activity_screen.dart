@@ -366,6 +366,7 @@ class _ActivityScreenState extends State<ActivityScreen>
           ),
         ),
         body: TabBarView(
+          physics: const NeverScrollableScrollPhysics(),
           children: [
             _buildEventsTab(),
             _buildPlaceholder('Sessions view coming soon.'),
@@ -940,70 +941,112 @@ class _ActivityScreenState extends State<ActivityScreen>
   }
 
   Widget _buildEventsTable() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE3DED6)),
-      ),
-      child: Column(
-        children: [
-          _buildTableHeader(),
-          const Divider(height: 1, color: Color(0xFFE3DED6)),
-          if (_isLoading && _events.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_events.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('No events loaded yet.'),
-            )
-          else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _events.length,
-              separatorBuilder: (_, __) =>
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = _visibleColumnKeys.map(_columnForKey).toList();
+        final tableMinWidth = _calculateTableMinWidth(columns);
+        final tableWidth = constraints.maxWidth < tableMinWidth
+            ? tableMinWidth
+            : constraints.maxWidth;
+        final columnWidths = _calculateColumnWidths(columns, tableWidth - 32);
+
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: tableWidth,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE3DED6)),
+              ),
+              child: Column(
+                children: [
+                  _buildTableHeader(columns, columnWidths),
                   const Divider(height: 1, color: Color(0xFFE3DED6)),
-              itemBuilder: (context, index) {
-                final event = _events[index];
-                return _buildEventRow(event);
-              },
+                  if (_isLoading && _events.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_events.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('No events loaded yet.'),
+                    )
+                  else
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _events.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, color: Color(0xFFE3DED6)),
+                      itemBuilder: (context, index) {
+                        final event = _events[index];
+                        return _buildEventRow(event, columns, columnWidths);
+                      },
+                    ),
+                ],
+              ),
             ),
-        ],
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildTableHeader() {
-    final columns = _visibleColumnKeys.map(_columnForKey).toList();
+  double _calculateTableMinWidth(List<ColumnSpec> columns) {
+    const baseWidth = 140.0;
+    final totalFlex = columns.fold<int>(0, (sum, col) => sum + col.flex);
+    return (totalFlex * baseWidth) + 32; // account for horizontal padding
+  }
+
+  List<double> _calculateColumnWidths(
+    List<ColumnSpec> columns,
+    double availableWidth,
+  ) {
+    final totalFlex = columns.fold<int>(0, (sum, col) => sum + col.flex);
+    if (totalFlex == 0) {
+      return List<double>.filled(columns.length, availableWidth / columns.length);
+    }
+    return columns
+        .map((col) => availableWidth * (col.flex / totalFlex))
+        .toList();
+  }
+
+  Widget _buildTableHeader(
+    List<ColumnSpec> columns,
+    List<double> widths,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          for (final column in columns)
-            Expanded(
-              flex: column.flex,
-              child: Text(column.label.toUpperCase()),
+          for (var i = 0; i < columns.length; i++)
+            SizedBox(
+              width: widths[i],
+              child: Text(columns[i].label.toUpperCase()),
             ),
         ],
       ),
     );
   }
 
-  Widget _buildEventRow(EventItem event) {
-    final columns = _visibleColumnKeys.map(_columnForKey).toList();
-
+  Widget _buildEventRow(
+    EventItem event,
+    List<ColumnSpec> columns,
+    List<double> widths,
+  ) {
     return ListTile(
       dense: true,
       title: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          for (final column in columns)
-            Expanded(
-              flex: column.flex,
-              child: _buildColumnCell(column, event),
+          for (var i = 0; i < columns.length; i++)
+            SizedBox(
+              width: widths[i],
+              child: _buildColumnCell(columns[i], event),
             ),
         ],
       ),
