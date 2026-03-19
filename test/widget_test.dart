@@ -7,7 +7,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:hoglet/main.dart';
+import 'package:hoglet/app.dart';
 
 void main() {
   testWidgets('App renders activity screen', (WidgetTester tester) async {
