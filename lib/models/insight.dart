@@ -322,27 +322,56 @@ InsightDisplayType _kindToType(String kind) {
 }
 
 String _detectChartDisplay(Map<String, dynamic> json) {
-  // Check query.source.trendsFilter.display or query.source.display
+  // Search all known locations for the display type
   final query = json['query'] as Map<String, dynamic>?;
   if (query != null) {
-    final source = query['source'] as Map<String, dynamic>? ?? query;
-    final trendsFilter = source['trendsFilter'] as Map<String, dynamic>?;
-    if (trendsFilter != null) {
-      final display = trendsFilter['display']?.toString();
-      if (display != null) return display;
+    // InsightVizNode wraps a source
+    final vizSource = query['source'] as Map<String, dynamic>?;
+    if (vizSource != null) {
+      // query.source.trendsFilter.display (most common in new API)
+      final tf = vizSource['trendsFilter'] as Map<String, dynamic>?;
+      if (tf != null && tf['display'] != null) return tf['display'].toString();
+      // query.source.display
+      if (vizSource['display'] != null) return vizSource['display'].toString();
+      // query.source.funnelsFilter.funnelVizType
+      final ff = vizSource['funnelsFilter'] as Map<String, dynamic>?;
+      if (ff != null && ff['funnelVizType'] != null) return ff['funnelVizType'].toString();
     }
-    final display = source['display']?.toString();
-    if (display != null) return display;
+    // query.trendsFilter.display (if no InsightVizNode wrapper)
+    final tf2 = query['trendsFilter'] as Map<String, dynamic>?;
+    if (tf2 != null && tf2['display'] != null) return tf2['display'].toString();
+    // query.display
+    if (query['display'] != null) return query['display'].toString();
   }
 
-  // Check legacy filters.display
+  // Legacy filters.display
   final filters = json['filters'] as Map<String, dynamic>?;
   if (filters != null) {
-    final display = filters['display']?.toString();
-    if (display != null) return display;
+    if (filters['display'] != null) return filters['display'].toString();
   }
 
+  // Deep search: walk the raw json for any 'display' key containing 'Pie'
+  final found = _findDisplayRecursive(json);
+  if (found != null) return found;
+
   return 'ActionsLineGraph';
+}
+
+String? _findDisplayRecursive(Map<String, dynamic> map, {int depth = 0}) {
+  if (depth > 4) return null;
+  for (final entry in map.entries) {
+    if (entry.key == 'display' && entry.value is String) {
+      final v = entry.value as String;
+      if (v.contains('Pie') || v.contains('Bar') || v.contains('Table') || v.contains('Bold') || v.contains('World')) {
+        return v;
+      }
+    }
+    if (entry.value is Map<String, dynamic>) {
+      final found = _findDisplayRecursive(entry.value as Map<String, dynamic>, depth: depth + 1);
+      if (found != null) return found;
+    }
+  }
+  return null;
 }
 
 InsightDisplayType _insightStringToType(String insight) {

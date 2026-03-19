@@ -39,7 +39,7 @@ class InsightCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            ChartRenderer(insight: insight, height: 140),
+            ChartRenderer(insight: insight, height: insight.isPie ? 220 : 140),
           ],
         ),
       ),
