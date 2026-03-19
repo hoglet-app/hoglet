@@ -443,7 +443,21 @@ class PosthogClient {
 
   Future<List<List<dynamic>>> fetchTopReferrers(String host, String projectId, String apiKey) async {
     final data = await _post(host, '/api/projects/$projectId/query/', apiKey, {
-      'query': {'kind': 'HogQLQuery', 'query': "SELECT properties.\$referring_domain as referrer, count() as views FROM events WHERE event = '\$pageview' AND timestamp > now() - INTERVAL 7 DAY AND referrer != '' AND referrer IS NOT NULL GROUP BY referrer ORDER BY views DESC LIMIT 10"},
+      'query': {'kind': 'HogQLQuery', 'query': "SELECT properties.\$referring_domain as referrer, uniq(distinct_id) as visitors, count() as views FROM events WHERE event = '\$pageview' AND timestamp > now() - INTERVAL 7 DAY AND referrer != '' AND referrer IS NOT NULL GROUP BY referrer ORDER BY visitors DESC LIMIT 10"},
+    });
+    return (data['results'] as List? ?? []).whereType<List>().toList();
+  }
+
+  Future<List<List<dynamic>>> fetchTopCountries(String host, String projectId, String apiKey) async {
+    final data = await _post(host, '/api/projects/$projectId/query/', apiKey, {
+      'query': {'kind': 'HogQLQuery', 'query': "SELECT properties.\$geoip_country_name as country, uniq(distinct_id) as visitors, count() as views FROM events WHERE event = '\$pageview' AND timestamp > now() - INTERVAL 7 DAY AND country IS NOT NULL AND country != '' GROUP BY country ORDER BY visitors DESC LIMIT 10"},
+    });
+    return (data['results'] as List? ?? []).whereType<List>().toList();
+  }
+
+  Future<List<List<dynamic>>> fetchTopUTMSources(String host, String projectId, String apiKey) async {
+    final data = await _post(host, '/api/projects/$projectId/query/', apiKey, {
+      'query': {'kind': 'HogQLQuery', 'query': "SELECT properties.utm_source as source, uniq(distinct_id) as visitors, count() as views FROM events WHERE event = '\$pageview' AND timestamp > now() - INTERVAL 7 DAY AND source IS NOT NULL AND source != '' GROUP BY source ORDER BY visitors DESC LIMIT 10"},
     });
     return (data['results'] as List? ?? []).whereType<List>().toList();
   }
