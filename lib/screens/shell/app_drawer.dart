@@ -22,7 +22,7 @@ class AppDrawer extends StatelessWidget {
           _DrawerItem(
             icon: Icons.insights,
             label: 'Insights',
-            onTap: () => _showComingSoon(context, 'Insights'),
+            onTap: () => _navigateToRoute(context, '/insights'),
           ),
           _DrawerItem(
             icon: Icons.language,

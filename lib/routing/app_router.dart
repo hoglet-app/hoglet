@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../screens/activity/activity_screen.dart';
 import '../screens/cohorts/cohort_detail_screen.dart';
 import '../screens/cohorts/cohorts_list_screen.dart';
+import '../screens/insights/insights_list_screen.dart';
 import '../screens/flags/flag_detail_screen.dart';
 import '../screens/flags/flags_list_screen.dart';
 import '../screens/home/dashboard_detail_screen.dart';
@@ -109,6 +110,20 @@ final appRouter = GoRouter(
       ],
     ),
     // Drawer routes (full-screen, outside shell)
+    GoRoute(
+      path: RoutePaths.insights,
+      name: RouteNames.insights,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const InsightsListScreen(),
+      routes: [
+        GoRoute(
+          path: ':insightId',
+          builder: (context, state) => InsightDetailScreen(
+            insightId: state.pathParameters['insightId']!,
+          ),
+        ),
+      ],
+    ),
     GoRoute(
       path: RoutePaths.persons,
       name: RouteNames.persons,

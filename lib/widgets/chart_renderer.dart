@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 
 import '../models/insight.dart';
 import 'breakdown_legend.dart';
+import 'lifecycle_chart.dart';
+import 'retention_table.dart';
+import 'stickiness_chart.dart';
 
 class ChartRenderer extends StatelessWidget {
   final Insight insight;
@@ -27,6 +30,12 @@ class ChartRenderer extends StatelessWidget {
         return _FunnelsChart(result: insight.result!, height: height);
       case InsightDisplayType.number:
         return _NumberChart(result: insight.result!, height: height);
+      case InsightDisplayType.retention:
+        return RetentionTable(resultData: insight.raw['result'], height: height);
+      case InsightDisplayType.lifecycle:
+        return LifecycleChart(result: insight.result!, height: height);
+      case InsightDisplayType.stickiness:
+        return StickinessChart(result: insight.result!, height: height);
       default:
         return _UnsupportedChart(insight: insight, height: height);
     }

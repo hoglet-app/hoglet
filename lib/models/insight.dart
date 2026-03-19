@@ -61,7 +61,10 @@ class Insight {
   bool get isSupportedChart =>
       displayType == InsightDisplayType.trends ||
       displayType == InsightDisplayType.funnels ||
-      displayType == InsightDisplayType.number;
+      displayType == InsightDisplayType.number ||
+      displayType == InsightDisplayType.retention ||
+      displayType == InsightDisplayType.lifecycle ||
+      displayType == InsightDisplayType.stickiness;
 }
 
 class InsightResult {
