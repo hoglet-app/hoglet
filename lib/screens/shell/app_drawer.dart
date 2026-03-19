@@ -18,18 +18,18 @@ class AppDrawer extends StatelessWidget {
             const Divider(color: Color(0xFFE3DED6)),
             _sectionLabel('Product Analytics'),
             _drawerItem(context, Icons.dashboard_outlined, 'Dashboards', RouteNames.home),
-            _drawerItem(context, Icons.insights_outlined, 'Insights', RouteNames.insights),
+            _comingSoonItem(context, Icons.insights_outlined, 'Insights'),
             const Divider(color: Color(0xFFE3DED6)),
             _sectionLabel('Data'),
             _drawerItem(context, Icons.bolt_outlined, 'Events', RouteNames.activity),
-            _drawerItem(context, Icons.person_outline, 'Persons', RouteNames.persons),
+            _comingSoonItem(context, Icons.person_outline, 'Persons'),
             const Divider(color: Color(0xFFE3DED6)),
             _sectionLabel('Features'),
             _drawerItem(context, Icons.flag_outlined, 'Feature Flags', RouteNames.flags),
-            _drawerItem(context, Icons.science_outlined, 'Experiments', RouteNames.experiments),
+            _comingSoonItem(context, Icons.science_outlined, 'Experiments'),
             const Divider(color: Color(0xFFE3DED6)),
             _sectionLabel('Monitoring'),
-            _drawerItem(context, Icons.videocam_outlined, 'Session Replay', RouteNames.recordings),
+            _comingSoonItem(context, Icons.videocam_outlined, 'Session Replay'),
           ],
         ),
       ),
@@ -103,6 +103,23 @@ class AppDrawer extends StatelessWidget {
       onTap: () {
         Navigator.of(context).pop(); // close drawer
         context.go(route);
+      },
+    );
+  }
+
+  Widget _comingSoonItem(BuildContext context, IconData icon, String label) {
+    return ListTile(
+      leading: Icon(icon, color: const Color(0xFF9E9890)),
+      title: Text(
+        label,
+        style: const TextStyle(color: Color(0xFF9E9890)),
+      ),
+      dense: true,
+      onTap: () {
+        Navigator.of(context).pop(); // close drawer
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$label is coming soon.')),
+        );
       },
     );
   }

@@ -1,25 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_solidart/flutter_solidart.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../di/providers.dart';
-import '../../models/dashboard.dart';
+import '../../models/feature_flag.dart';
 import '../../services/storage_service.dart';
-import '../../state/dashboard_state.dart';
+import '../../state/flags_state.dart';
 import '../../widgets/error_view.dart';
 import '../../widgets/loading_states.dart';
+import '../../widgets/status_badge.dart';
 
-class DashboardListScreen extends StatefulWidget {
-  const DashboardListScreen({super.key});
+class FlagsListScreen extends StatefulWidget {
+  const FlagsListScreen({super.key});
 
   @override
-  State<DashboardListScreen> createState() => _DashboardListScreenState();
+  State<FlagsListScreen> createState() => _FlagsListScreenState();
 }
 
-class _DashboardListScreenState extends State<DashboardListScreen> {
-  DashboardState? _dashboardState;
+class _FlagsListScreenState extends State<FlagsListScreen> {
+  FlagsState? _flagsState;
   StorageService? _storage;
   bool _initialized = false;
+
+  String _host = '';
+  String _projectId = '';
+  String _apiKey = '';
 
   final _searchController = TextEditingController();
   String _searchQuery = '';
@@ -39,7 +45,7 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      _dashboardState = AppProviders.of(context).dashboardState;
+      _flagsState = AppProviders.of(context).flagsState;
       _storage = AppProviders.of(context).storage;
       _load();
     }
@@ -54,11 +60,11 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
   bool _missingCredentials = false;
 
   Future<void> _load() async {
-    final host = await _storage!.read(StorageService.keyHost) ?? '';
-    final projectId = await _storage!.read(StorageService.keyProjectId) ?? '';
-    final apiKey = await _storage!.read(StorageService.keyApiKey) ?? '';
+    _host = await _storage!.read(StorageService.keyHost) ?? '';
+    _projectId = await _storage!.read(StorageService.keyProjectId) ?? '';
+    _apiKey = await _storage!.read(StorageService.keyApiKey) ?? '';
 
-    if (host.isEmpty || projectId.isEmpty || apiKey.isEmpty) {
+    if (_host.isEmpty || _projectId.isEmpty || _apiKey.isEmpty) {
       if (mounted) {
         setState(() => _missingCredentials = true);
       }
@@ -69,36 +75,38 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
       setState(() => _missingCredentials = false);
     }
 
-    await _dashboardState!.fetchDashboards(
-      host: host,
-      projectId: projectId,
-      apiKey: apiKey,
+    await _flagsState!.fetchFlags(
+      host: _host,
+      projectId: _projectId,
+      apiKey: _apiKey,
     );
   }
 
-  List<Dashboard> _sorted(List<Dashboard> dashboards) {
+  List<FeatureFlag> _filtered(List<FeatureFlag> flags) {
     final q = _searchQuery.toLowerCase().trim();
-    final filtered = q.isEmpty
-        ? List<Dashboard>.from(dashboards)
-        : dashboards
-            .where((d) => d.name.toLowerCase().contains(q))
-            .toList();
+    if (q.isEmpty) return flags;
+    return flags
+        .where((f) =>
+            f.key.toLowerCase().contains(q) ||
+            f.name.toLowerCase().contains(q))
+        .toList();
+  }
 
-    filtered.sort((a, b) {
-      if (a.pinned && !b.pinned) return -1;
-      if (!a.pinned && b.pinned) return 1;
-      final aTime = a.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final bTime = b.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      return bTime.compareTo(aTime);
-    });
-
-    return filtered;
+  Future<void> _toggle(FeatureFlag flag) async {
+    HapticFeedback.mediumImpact();
+    await _flagsState!.toggleFlag(
+      host: _host,
+      projectId: _projectId,
+      apiKey: _apiKey,
+      flagId: flag.id,
+      active: !flag.active,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final dashboardState = _dashboardState;
-    if (dashboardState == null) {
+    final flagsState = _flagsState;
+    if (flagsState == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -117,7 +125,7 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
           child: TextField(
             controller: _searchController,
             decoration: InputDecoration(
-              hintText: 'Search dashboards…',
+              hintText: 'Search flags…',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
@@ -143,8 +151,8 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
         Expanded(
           child: SignalBuilder(
             builder: (context, _) {
-              final isLoading = dashboardState.isLoading.value;
-              final error = dashboardState.error.value;
+              final isLoading = flagsState.isLoading.value;
+              final error = flagsState.error.value;
 
               if (isLoading) {
                 return const ShimmerList();
@@ -156,17 +164,17 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
                 );
               }
 
-              final dashboards = dashboardState.dashboards.value;
-              final sorted = _sorted(dashboards);
+              final flags = flagsState.flags.value;
+              final filtered = _filtered(flags);
 
-              if (sorted.isEmpty) {
+              if (filtered.isEmpty) {
                 return EmptyState(
-                  icon: Icons.dashboard_outlined,
+                  icon: Icons.flag_outlined,
                   title: _searchQuery.isEmpty
-                      ? 'No dashboards yet'
+                      ? 'No feature flags yet'
                       : 'No results for "$_searchQuery"',
                   subtitle: _searchQuery.isEmpty
-                      ? 'Create a dashboard in PostHog to see it here.'
+                      ? 'Create a feature flag in PostHog to see it here.'
                       : null,
                 );
               }
@@ -175,14 +183,13 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
                 onRefresh: _load,
                 child: ListView.builder(
                   padding: const EdgeInsets.all(16),
-                  itemCount: sorted.length,
+                  itemCount: filtered.length,
                   itemBuilder: (context, index) {
-                    final dashboard = sorted[index];
-                    return _DashboardCard(
-                      dashboard: dashboard,
-                      onTap: () => context.go(
-                        '/home/dashboard/${dashboard.id}',
-                      ),
+                    final flag = filtered[index];
+                    return _FlagRow(
+                      flag: flag,
+                      onTap: () => context.go('/flags/flag/${flag.id}'),
+                      onToggle: () => _toggle(flag),
                     );
                   },
                 ),
@@ -195,14 +202,16 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
   }
 }
 
-class _DashboardCard extends StatelessWidget {
-  const _DashboardCard({
-    required this.dashboard,
+class _FlagRow extends StatelessWidget {
+  const _FlagRow({
+    required this.flag,
     required this.onTap,
+    required this.onToggle,
   });
 
-  final Dashboard dashboard;
+  final FeatureFlag flag;
   final VoidCallback onTap;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -219,59 +228,48 @@ class _DashboardCard extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                if (dashboard.pinned) ...[
-                  const Icon(
-                    Icons.push_pin,
-                    size: 16,
-                    color: Color(0xFFF15A24),
-                  ),
-                  const SizedBox(width: 8),
-                ],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        dashboard.name,
+                        flag.key,
                         style: const TextStyle(
-                          fontSize: 15,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF1C1B19),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      if (dashboard.description != null &&
-                          dashboard.description!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          dashboard.description!,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF6F6A63),
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
                       const SizedBox(height: 6),
-                      Text(
-                        '${dashboard.tiles.length} tile${dashboard.tiles.length == 1 ? '' : 's'}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF9E9890),
-                        ),
+                      Row(
+                        children: [
+                          StatusBadge(
+                            label: flag.active ? 'Active' : 'Inactive',
+                            active: flag.active,
+                          ),
+                          if (flag.rolloutPercentage != null) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              '${flag.rolloutPercentage}%',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF6F6A63),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.chevron_right,
-                  color: Color(0xFF9E9890),
+                Switch(
+                  value: flag.active,
+                  onChanged: (_) => onToggle(),
                 ),
               ],
             ),
