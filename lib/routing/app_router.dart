@@ -8,6 +8,8 @@ import '../screens/cohorts/cohort_detail_screen.dart';
 import '../screens/cohorts/cohorts_list_screen.dart';
 import '../screens/error_tracking/error_detail_screen.dart';
 import '../screens/error_tracking/error_list_screen.dart';
+import '../screens/recordings/recordings_list_screen.dart';
+import '../screens/web_analytics/web_analytics_screen.dart';
 import '../screens/experiments/experiment_detail_screen.dart';
 import '../screens/experiments/experiments_list_screen.dart';
 import '../screens/insights/insights_list_screen.dart';
@@ -213,6 +215,18 @@ final appRouter = GoRouter(
           builder: (context, state) => AlertDetailScreen(alertId: state.pathParameters['alertId']!),
         ),
       ],
+    ),
+    GoRoute(
+      path: RoutePaths.webAnalytics,
+      name: RouteNames.webAnalytics,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const WebAnalyticsScreen(),
+    ),
+    GoRoute(
+      path: RoutePaths.recordings,
+      name: RouteNames.recordings,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const RecordingsListScreen(),
     ),
   ],
 );

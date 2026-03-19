@@ -399,6 +399,28 @@ class PosthogClient {
     return AlertItem.fromJson(data as Map<String, dynamic>);
   }
 
+  // -- Web Analytics --
+
+  Future<Map<String, dynamic>> fetchWebAnalytics(String host, String projectId, String apiKey) async {
+    final data = await _post(host, '/api/projects/$projectId/query/', apiKey, {
+      'query': {'kind': 'HogQLQuery', 'query': 'SELECT count() as pageviews, uniq(distinct_id) as visitors, uniq(properties.\$session_id) as sessions FROM events WHERE event = \'\$pageview\' AND timestamp > now() - INTERVAL 7 DAY'},
+    });
+    final results = data['results'] as List? ?? [];
+    if (results.isNotEmpty && results.first is List) {
+      final row = results.first as List;
+      return {'pageviews': row.isNotEmpty ? row[0] : 0, 'visitors': row.length > 1 ? row[1] : 0, 'sessions': row.length > 2 ? row[2] : 0};
+    }
+    return {};
+  }
+
+  // -- Session Recordings --
+
+  Future<List<Map<String, dynamic>>> fetchSessionRecordings(String host, String projectId, String apiKey) async {
+    final data = await _get(host, '/api/environments/$projectId/session_recordings/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results.cast<Map<String, dynamic>>();
+  }
+
   void dispose() {
     _httpClient.close();
   }

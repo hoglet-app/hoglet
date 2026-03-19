@@ -11,7 +11,9 @@ import '../state/experiments_state.dart';
 import '../state/flags_state.dart';
 import '../state/insights_state.dart';
 import '../state/persons_state.dart';
+import '../state/recordings_state.dart';
 import '../state/surveys_state.dart';
+import '../state/web_analytics_state.dart';
 
 class AppProviders extends InheritedWidget {
   final PosthogClient client;
@@ -26,6 +28,8 @@ class AppProviders extends InheritedWidget {
   final SurveysState surveysState;
   final ErrorTrackingState errorTrackingState;
   final AlertsState alertsState;
+  final WebAnalyticsState webAnalyticsState;
+  final RecordingsState recordingsState;
 
   const AppProviders({
     super.key,
@@ -41,6 +45,8 @@ class AppProviders extends InheritedWidget {
     required this.surveysState,
     required this.errorTrackingState,
     required this.alertsState,
+    required this.webAnalyticsState,
+    required this.recordingsState,
     required super.child,
   });
 

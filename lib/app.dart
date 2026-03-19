@@ -14,7 +14,9 @@ import 'state/experiments_state.dart';
 import 'state/flags_state.dart';
 import 'state/insights_state.dart';
 import 'state/persons_state.dart';
+import 'state/recordings_state.dart';
 import 'state/surveys_state.dart';
+import 'state/web_analytics_state.dart';
 
 class HogletApp extends StatefulWidget {
   const HogletApp({super.key});
@@ -36,6 +38,8 @@ class _HogletAppState extends State<HogletApp> {
   late final SurveysState _surveysState;
   late final ErrorTrackingState _errorTrackingState;
   late final AlertsState _alertsState;
+  late final WebAnalyticsState _webAnalyticsState;
+  late final RecordingsState _recordingsState;
 
   @override
   void initState() {
@@ -52,6 +56,8 @@ class _HogletAppState extends State<HogletApp> {
     _surveysState = SurveysState();
     _errorTrackingState = ErrorTrackingState();
     _alertsState = AlertsState();
+    _webAnalyticsState = WebAnalyticsState();
+    _recordingsState = RecordingsState();
   }
 
   @override
@@ -66,6 +72,8 @@ class _HogletAppState extends State<HogletApp> {
     _surveysState.dispose();
     _errorTrackingState.dispose();
     _alertsState.dispose();
+    _webAnalyticsState.dispose();
+    _recordingsState.dispose();
     _client.dispose();
     super.dispose();
   }
@@ -85,6 +93,8 @@ class _HogletAppState extends State<HogletApp> {
       surveysState: _surveysState,
       errorTrackingState: _errorTrackingState,
       alertsState: _alertsState,
+      webAnalyticsState: _webAnalyticsState,
+      recordingsState: _recordingsState,
       child: MaterialApp.router(
         title: 'Hoglet',
         debugShowCheckedModeBanner: false,

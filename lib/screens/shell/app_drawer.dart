@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../di/providers.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -27,7 +30,7 @@ class AppDrawer extends StatelessWidget {
           _DrawerItem(
             icon: Icons.language,
             label: 'Web Analytics',
-            onTap: () => _showComingSoon(context, 'Web Analytics'),
+            onTap: () => _navigateToRoute(context, '/web-analytics'),
           ),
           _SectionHeader('DATA'),
           _DrawerItem(
@@ -65,7 +68,7 @@ class AppDrawer extends StatelessWidget {
           _DrawerItem(
             icon: Icons.videocam,
             label: 'Session Replay',
-            onTap: () => _showComingSoon(context, 'Session Replay'),
+            onTap: () => _navigateToRoute(context, '/recordings'),
           ),
           _DrawerItem(
             icon: Icons.bug_report,
@@ -81,7 +84,7 @@ class AppDrawer extends StatelessWidget {
             icon: Icons.local_fire_department,
             label: 'Heatmaps',
             isLinkOut: true,
-            onTap: () => _showComingSoon(context, 'Heatmaps'),
+            onTap: () => _launchPostHogUrl(context, '/heatmaps'),
           ),
           _SectionHeader('DATA & TOOLS'),
           _DrawerItem(
@@ -98,13 +101,13 @@ class AppDrawer extends StatelessWidget {
             icon: Icons.sync_alt,
             label: 'Data Pipelines',
             isLinkOut: true,
-            onTap: () => _showComingSoon(context, 'Data Pipelines'),
+            onTap: () => _launchPostHogUrl(context, '/pipeline'),
           ),
           _DrawerItem(
             icon: Icons.book,
             label: 'Notebooks',
             isLinkOut: true,
-            onTap: () => _showComingSoon(context, 'Notebooks'),
+            onTap: () => _launchPostHogUrl(context, '/notebooks'),
           ),
           const SizedBox(height: 8),
           const Divider(),
@@ -131,6 +134,14 @@ class AppDrawer extends StatelessWidget {
   void _navigateToRoute(BuildContext context, String path) {
     Navigator.of(context).pop(); // close drawer
     GoRouter.of(context).push(path);
+  }
+
+  void _launchPostHogUrl(BuildContext context, String path) async {
+    Navigator.of(context).pop();
+    final credentials = await AppProviders.of(context).storage.readCredentials();
+    if (credentials == null) return;
+    final url = Uri.parse('${credentials.host}$path');
+    await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
   void _showComingSoon(BuildContext context, String feature) {
