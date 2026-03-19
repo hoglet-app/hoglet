@@ -126,24 +126,41 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
     if (!mounted) return;
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: const Color(0xFFF5F4EF),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) {
-        return Dialog(
-          backgroundColor: const Color(0xFFF5F4EF),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 820),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: StatefulBuilder(
-                builder: (context, setDialogState) {
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+        return DraggableScrollableSheet(
+          initialChildSize: 0.85,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return StatefulBuilder(
+              builder: (context, setSheetState) {
+                return Column(
+                  children: [
+                    // Handle bar
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 4),
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE3DED6),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
+                      child: Row(
                         children: [
                           const Text(
                             'Configure columns',
@@ -153,63 +170,149 @@ class _ActivityScreenState extends State<ActivityScreen> {
                             ),
                           ),
                           const Spacer(),
+                          TextButton(
+                            onPressed: () {
+                              _resetColumns(eventsState);
+                            },
+                            child: const Text('Reset'),
+                          ),
                           IconButton(
                             icon: const Icon(Icons.close),
                             onPressed: () => Navigator.of(context).pop(),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Visible columns (drag to reorder)',
-                        style: TextStyle(color: Color(0xFF6F6A63)),
-                      ),
-                      const SizedBox(height: 12),
-                      _buildVisibleColumnsList(eventsState, setDialogState),
-                      const SizedBox(height: 16),
-                      _buildAvailableColumnsSection(
-                        eventsState,
-                        setDialogState,
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
+                    ),
+                    // Scrollable content
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                         children: [
-                          OutlinedButton(
-                            onPressed: () {
-                              _resetColumns(eventsState, setDialogState);
+                          // Visible columns section
+                          const Text(
+                            'VISIBLE',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1,
+                              color: Color(0xFF6F6A63),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildVisibleColumnsList(eventsState),
+                          const SizedBox(height: 20),
+                          // Category filter chips
+                          const Text(
+                            'ADD COLUMNS',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1,
+                              color: Color(0xFF6F6A63),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildCategoryChips(eventsState, setSheetState),
+                          const SizedBox(height: 12),
+                          // Search
+                          TextField(
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(Icons.search, size: 20),
+                              hintText: 'Search properties...',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: Color(0xFFE3DED6)),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: Color(0xFFE3DED6)),
+                              ),
+                              isDense: true,
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                            ),
+                            onChanged: (value) {
+                              setSheetState(() {
+                                _columnSearch = value;
+                              });
                             },
-                            child: const Text('Reset to defaults'),
                           ),
-                          const Spacer(),
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Close'),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            onPressed: () {
-                              eventsState.saveVisibleColumns();
-                              Navigator.of(context).pop();
-                            },
-                            child: const Text('Save'),
-                          ),
+                          const SizedBox(height: 8),
+                          // Available columns list
+                          _buildAvailableColumnsList(eventsState),
                         ],
                       ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
+                    ),
+                    // Bottom action bar
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      decoration: const BoxDecoration(
+                        border: Border(top: BorderSide(color: Color(0xFFE3DED6))),
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            eventsState.saveVisibleColumns();
+                            Navigator.of(context).pop();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFF15A24),
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size.fromHeight(48),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text('Save'),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildVisibleColumnsList(
-    EventsState eventsState,
-    StateSetter setDialogState,
-  ) {
+  Widget _buildCategoryChips(EventsState eventsState, StateSetter setSheetState) {
+    return SignalBuilder(
+      builder: (context, _) {
+        final available = eventsState.availableColumns.value;
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _categoryChip(
+              'Event (${_countForCategory(available, ColumnCategory.event)})',
+              selected: _selectedCategory == ColumnCategory.event,
+              onTap: () => setSheetState(() => _selectedCategory = ColumnCategory.event),
+            ),
+            _categoryChip(
+              'Person (${_countForCategory(available, ColumnCategory.person)})',
+              selected: _selectedCategory == ColumnCategory.person,
+              onTap: () => setSheetState(() => _selectedCategory = ColumnCategory.person),
+            ),
+            _categoryChip(
+              'Session (${_countForCategory(available, ColumnCategory.session)})',
+              selected: _selectedCategory == ColumnCategory.session,
+              onTap: () => setSheetState(() => _selectedCategory = ColumnCategory.session),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildVisibleColumnsList(EventsState eventsState) {
     return SignalBuilder(
       builder: (context, _) {
         final keys = eventsState.visibleColumnKeys.value;
@@ -229,37 +332,23 @@ class _ActivityScreenState extends State<ActivityScreen> {
               final item = updated.removeAt(oldIndex);
               updated.insert(newIndex, item);
               eventsState.visibleColumnKeys.value = updated;
-              eventsState.saveVisibleColumns();
             },
             itemBuilder: (context, index) {
               final column = eventsState.columnForKey(keys[index]);
               return ListTile(
                 key: ValueKey(column.key),
-                leading: const Icon(Icons.drag_indicator),
-                title: Text(column.label),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit_outlined, size: 18),
-                      onPressed: () {},
-                    ),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.close,
-                        size: 18,
-                        color: Color(0xFFF15A24),
-                      ),
-                      onPressed: () {
-                        final updated = List<String>.from(
-                          eventsState.visibleColumnKeys.value,
-                        );
-                        updated.remove(column.key);
-                        eventsState.visibleColumnKeys.value = updated;
-                        eventsState.saveVisibleColumns();
-                      },
-                    ),
-                  ],
+                dense: true,
+                leading: const Icon(Icons.drag_indicator, size: 20, color: Color(0xFF9E9890)),
+                title: Text(column.label, style: const TextStyle(fontSize: 14)),
+                trailing: IconButton(
+                  icon: const Icon(Icons.remove_circle_outline, size: 20, color: Color(0xFFF15A24)),
+                  onPressed: () {
+                    final updated = List<String>.from(
+                      eventsState.visibleColumnKeys.value,
+                    );
+                    updated.remove(column.key);
+                    eventsState.visibleColumnKeys.value = updated;
+                  },
                 ),
               );
             },
@@ -269,127 +358,76 @@ class _ActivityScreenState extends State<ActivityScreen> {
     );
   }
 
-  Widget _buildAvailableColumnsSection(
-    EventsState eventsState,
-    StateSetter setDialogState,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE3DED6)),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search),
-                hintText:
-                    'Search event properties, feature flags, person properties, sessions',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                isDense: true,
-              ),
-              onChanged: (value) {
-                setDialogState(() {
-                  _columnSearch = value;
-                });
-              },
-            ),
-          ),
-          const Divider(height: 1, color: Color(0xFFE3DED6)),
-          SizedBox(
-            height: 220,
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 180,
-                  child: SignalBuilder(
-                    builder: (context, _) {
-                      final available = eventsState.availableColumns.value;
-                      return ListView(
-                        padding: const EdgeInsets.all(12),
-                        children: [
-                          _categoryChip(
-                            'Event properties: ${_countForCategory(available, ColumnCategory.event)}',
-                            selected:
-                                _selectedCategory == ColumnCategory.event,
-                            onTap: () => setDialogState(() {
-                              _selectedCategory = ColumnCategory.event;
-                            }),
-                          ),
-                          const SizedBox(height: 8),
-                          _categoryChip(
-                            'Feature flags: 0',
-                            selected:
-                                _selectedCategory == ColumnCategory.flags,
-                            onTap: () => setDialogState(() {
-                              _selectedCategory = ColumnCategory.flags;
-                            }),
-                          ),
-                          const SizedBox(height: 8),
-                          _categoryChip(
-                            'Person properties: ${_countForCategory(available, ColumnCategory.person)}',
-                            selected:
-                                _selectedCategory == ColumnCategory.person,
-                            onTap: () => setDialogState(() {
-                              _selectedCategory = ColumnCategory.person;
-                            }),
-                          ),
-                          const SizedBox(height: 8),
-                          _categoryChip(
-                            'Session properties: ${_countForCategory(available, ColumnCategory.session)}',
-                            selected:
-                                _selectedCategory == ColumnCategory.session,
-                            onTap: () => setDialogState(() {
-                              _selectedCategory = ColumnCategory.session;
-                            }),
-                          ),
-                          const SizedBox(height: 8),
-                          _categoryChip('SQL expression'),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-                const VerticalDivider(width: 1, color: Color(0xFFE3DED6)),
-                Expanded(
-                  child: SignalBuilder(
-                    builder: (context, _) {
-                      final isLoadingCols =
-                          eventsState.isLoadingColumns.value;
-                      final available = eventsState.availableColumns.value;
-                      final filtered =
-                          _filteredAvailableColumns(available);
+  Widget _buildAvailableColumnsList(EventsState eventsState) {
+    return SignalBuilder(
+      builder: (context, _) {
+        final isLoadingCols = eventsState.isLoadingColumns.value;
+        final available = eventsState.availableColumns.value;
+        final filtered = _filteredAvailableColumns(available);
+        final visibleKeys = eventsState.visibleColumnKeys.value;
 
-                      if (isLoadingCols) {
-                        return const Center(
-                          child: CircularProgressIndicator(),
-                        );
-                      }
-                      return ListView.separated(
-                        padding: const EdgeInsets.all(12),
-                        itemBuilder: (context, index) {
-                          final column = filtered[index];
-                          return _availableColumnRow(column, eventsState);
-                        },
-                        separatorBuilder: (_, __) => const Divider(
-                          height: 1,
-                          color: Color(0xFFE3DED6),
-                        ),
-                        itemCount: filtered.length,
-                      );
-                    },
+        if (isLoadingCols && available.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (filtered.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: Text(
+                _columnSearch.isEmpty
+                    ? 'No properties in this category'
+                    : 'No results for "$_columnSearch"',
+                style: const TextStyle(color: Color(0xFF6F6A63)),
+              ),
+            ),
+          );
+        }
+
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE3DED6)),
+          ),
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            itemCount: filtered.length,
+            separatorBuilder: (_, __) => const Divider(
+              height: 1,
+              color: Color(0xFFE3DED6),
+            ),
+            itemBuilder: (context, index) {
+              final column = filtered[index];
+              final alreadyAdded = visibleKeys.contains(column.key);
+              return ListTile(
+                dense: true,
+                title: Text(
+                  column.label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: alreadyAdded ? const Color(0xFF9E9890) : const Color(0xFF1C1B19),
                   ),
                 ),
-              ],
-            ),
+                trailing: alreadyAdded
+                    ? const Icon(Icons.check, size: 18, color: Color(0xFF9E9890))
+                    : const Icon(Icons.add_circle_outline, size: 18, color: Color(0xFFF15A24)),
+                onTap: alreadyAdded
+                    ? null
+                    : () {
+                        final current = eventsState.visibleColumnKeys.value;
+                        eventsState.visibleColumnKeys.value = [...current, column.key];
+                      },
+              );
+            },
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -398,45 +436,30 @@ class _ActivityScreenState extends State<ActivityScreen> {
     bool selected = false,
     VoidCallback? onTap,
   }) {
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: selected ? const Color(0xFFFFEFE7) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE3DED6)),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? const Color(0xFFF15A24) : const Color(0xFFE3DED6),
+          ),
         ),
         child: Text(
           text,
           style: TextStyle(
-            color: selected
-                ? const Color(0xFFF15A24)
-                : const Color(0xFF1C1B19),
+            fontSize: 13,
+            color: selected ? const Color(0xFFF15A24) : const Color(0xFF1C1B19),
+            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
           ),
         ),
       ),
     );
   }
 
-  Widget _availableColumnRow(ColumnOption column, EventsState eventsState) {
-    return ListTile(
-      dense: true,
-      leading: const Icon(Icons.ssid_chart, size: 18),
-      title: Text(column.label),
-      trailing: IconButton(
-        icon: const Icon(Icons.add_circle_outline),
-        onPressed: () {
-          final current = eventsState.visibleColumnKeys.value;
-          if (current.contains(column.key)) return;
-          eventsState.visibleColumnKeys.value = [...current, column.key];
-          eventsState.saveVisibleColumns();
-        },
-      ),
-    );
-  }
-
-  void _resetColumns(EventsState eventsState, StateSetter setDialogState) {
+  void _resetColumns(EventsState eventsState) {
     eventsState.visibleColumnKeys.value = _defaultVisibleKeys();
     eventsState.saveVisibleColumns();
   }
