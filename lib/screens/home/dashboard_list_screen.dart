@@ -39,8 +39,8 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      _dashboardState = dashboardStateProvider.of(context);
-      _storage = storageServiceProvider.of(context);
+      _dashboardState = AppProviders.of(context).dashboardState;
+      _storage = AppProviders.of(context).storage;
       _load();
     }
   }
@@ -51,10 +51,24 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
     super.dispose();
   }
 
+  bool _missingCredentials = false;
+
   Future<void> _load() async {
     final host = await _storage!.read(StorageService.keyHost) ?? '';
     final projectId = await _storage!.read(StorageService.keyProjectId) ?? '';
     final apiKey = await _storage!.read(StorageService.keyApiKey) ?? '';
+
+    if (host.isEmpty || projectId.isEmpty || apiKey.isEmpty) {
+      if (mounted) {
+        setState(() => _missingCredentials = true);
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _missingCredentials = false);
+    }
+
     await _dashboardState!.fetchDashboards(
       host: host,
       projectId: projectId,
@@ -85,95 +99,98 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
   Widget build(BuildContext context) {
     final dashboardState = _dashboardState;
     if (dashboardState == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Center(child: CircularProgressIndicator());
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dashboards'),
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search dashboards…',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => _searchController.clear(),
-                      )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFFE3DED6)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFFE3DED6)),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                filled: true,
-                fillColor: Colors.white,
+    if (_missingCredentials) {
+      return const EmptyState(
+        icon: Icons.settings_outlined,
+        title: 'No connection configured',
+        subtitle: 'Configure your connection in Settings to get started.',
+      );
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search dashboards…',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => _searchController.clear(),
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE3DED6)),
               ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE3DED6)),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              filled: true,
+              fillColor: Colors.white,
             ),
           ),
-          Expanded(
-            child: SignalBuilder(
-              builder: (context, _) {
-                final isLoading = dashboardState.isLoading.value;
-                final error = dashboardState.error.value;
+        ),
+        Expanded(
+          child: SignalBuilder(
+            builder: (context, _) {
+              final isLoading = dashboardState.isLoading.value;
+              final error = dashboardState.error.value;
 
-                if (isLoading) {
-                  return const ShimmerList();
-                }
-                if (error != null) {
-                  return ErrorView(
-                    error: error,
-                    onRetry: _load,
-                  );
-                }
-
-                final dashboards = dashboardState.dashboards.value;
-                final sorted = _sorted(dashboards);
-
-                if (sorted.isEmpty) {
-                  return EmptyState(
-                    icon: Icons.dashboard_outlined,
-                    title: _searchQuery.isEmpty
-                        ? 'No dashboards yet'
-                        : 'No results for "$_searchQuery"',
-                    subtitle: _searchQuery.isEmpty
-                        ? 'Create a dashboard in PostHog to see it here.'
-                        : null,
-                  );
-                }
-
-                return RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: sorted.length,
-                    itemBuilder: (context, index) {
-                      final dashboard = sorted[index];
-                      return _DashboardCard(
-                        dashboard: dashboard,
-                        onTap: () => context.go(
-                          '/home/dashboard/${dashboard.id}',
-                        ),
-                      );
-                    },
-                  ),
+              if (isLoading) {
+                return const ShimmerList();
+              }
+              if (error != null) {
+                return ErrorView(
+                  error: error,
+                  onRetry: _load,
                 );
-              },
-            ),
+              }
+
+              final dashboards = dashboardState.dashboards.value;
+              final sorted = _sorted(dashboards);
+
+              if (sorted.isEmpty) {
+                return EmptyState(
+                  icon: Icons.dashboard_outlined,
+                  title: _searchQuery.isEmpty
+                      ? 'No dashboards yet'
+                      : 'No results for "$_searchQuery"',
+                  subtitle: _searchQuery.isEmpty
+                      ? 'Create a dashboard in PostHog to see it here.'
+                      : null,
+                );
+              }
+
+              return RefreshIndicator(
+                onRefresh: _load,
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: sorted.length,
+                  itemBuilder: (context, index) {
+                    final dashboard = sorted[index];
+                    return _DashboardCard(
+                      dashboard: dashboard,
+                      onTap: () => context.go(
+                        '/home/dashboard/${dashboard.id}',
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

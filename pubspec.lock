@@ -65,14 +65,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.8"
-  disco:
-    dependency: "direct main"
-    description:
-      name: disco
-      sha256: fbeea71865f1d8a8966435cccdf7227aca8adbba858ad98e7878a80978c3c468
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.3+1"
   equatable:
     dependency: transitive
     description:
@@ -101,10 +93,10 @@ packages:
     dependency: "direct main"
     description:
       name: fl_chart
-      sha256: d3f82f4a38e33ba23d05a08ff304d7d8b22d2a59a5503f20bd802966e915db89
+      sha256: "5276944c6ffc975ae796569a826c38a62d2abcf264e26b88fa6f482e107f4237"
       url: "https://pub.dev"
     source: hosted
-    version: "1.1.0"
+    version: "0.70.2"
   flutter:
     dependency: "direct main"
     description: flutter

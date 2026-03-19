@@ -256,7 +256,7 @@ class _FunnelsChart extends StatelessWidget {
             ? const FlGridData(show: false)
             : const FlGridData(),
         borderData: FlBorderData(show: !compact),
-        barTouchData: const BarTouchData(enabled: false),
+        barTouchData: BarTouchData(enabled: false),
         maxY: 100,
       ),
     );
@@ -303,35 +303,55 @@ class _UnsupportedChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.open_in_browser, size: 32, color: Color(0xFF6F6A63)),
-            const SizedBox(height: 8),
-            Text(
-              'View on web for full experience',
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF6F6A63),
-              ),
-              textAlign: TextAlign.center,
-            ),
-            if (type.isNotEmpty && type != 'UNKNOWN') ...[
-              const SizedBox(height: 4),
-              Text(
-                type,
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: Color(0xFF9E9890),
-                ),
-              ),
-            ],
-          ],
-        ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _iconForType(type),
+            size: 28,
+            color: const Color(0xFF9E9890),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _labelForType(type),
+            style: const TextStyle(fontSize: 12, color: Color(0xFF9E9890)),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
+  }
+
+  static IconData _iconForType(String type) {
+    switch (type) {
+      case 'RETENTION':
+        return Icons.grid_on;
+      case 'LIFECYCLE':
+        return Icons.auto_graph;
+      case 'PATHS':
+        return Icons.account_tree;
+      case 'STICKINESS':
+        return Icons.show_chart;
+      default:
+        return Icons.bar_chart;
+    }
+  }
+
+  static String _labelForType(String type) {
+    switch (type) {
+      case 'RETENTION':
+        return 'Retention';
+      case 'LIFECYCLE':
+        return 'Lifecycle';
+      case 'PATHS':
+        return 'Paths';
+      case 'STICKINESS':
+        return 'Stickiness';
+      case 'UNKNOWN':
+        return 'Chart';
+      default:
+        return type[0] + type.substring(1).toLowerCase();
+    }
   }
 }
 
