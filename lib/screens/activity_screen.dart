@@ -8,6 +8,7 @@ import '../models/column_spec.dart';
 import '../models/event_item.dart';
 import '../services/storage_service.dart';
 import '../state/events_state.dart';
+import '../widgets/loading_states.dart';
 
 class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
@@ -20,6 +21,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
   EventsState? _eventsState;
   StorageService? _storage;
   bool _initialized = false;
+
+  bool _missingCredentials = false;
 
   // UI-only state for the column config dialog
   String _columnSearch = '';
@@ -47,13 +50,22 @@ class _ActivityScreenState extends State<ActivityScreen> {
     final projectId = await storage.read(StorageService.keyProjectId) ?? '';
     final apiKey = await storage.read(StorageService.keyApiKey) ?? '';
 
-    if (host.isNotEmpty && projectId.isNotEmpty && apiKey.isNotEmpty) {
-      await eventsState.fetchEvents(
-        host: host,
-        projectId: projectId,
-        apiKey: apiKey,
-      );
+    if (host.isEmpty || projectId.isEmpty || apiKey.isEmpty) {
+      if (mounted) {
+        setState(() => _missingCredentials = true);
+      }
+      return;
     }
+
+    if (mounted) {
+      setState(() => _missingCredentials = false);
+    }
+
+    await eventsState.fetchEvents(
+      host: host,
+      projectId: projectId,
+      apiKey: apiKey,
+    );
   }
 
   Future<void> _reload() async {
@@ -168,7 +180,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
                           ),
                           const SizedBox(width: 8),
                           ElevatedButton(
-                            onPressed: () => Navigator.of(context).pop(),
+                            onPressed: () {
+                              eventsState.saveVisibleColumns();
+                              Navigator.of(context).pop();
+                            },
                             child: const Text('Save'),
                           ),
                         ],
@@ -455,6 +470,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
     final eventsState = _eventsState;
     if (eventsState == null) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_missingCredentials) {
+      return const EmptyState(
+        icon: Icons.settings_outlined,
+        title: 'No connection configured',
+        subtitle: 'Configure your connection in Settings to get started.',
+      );
     }
 
     return DefaultTabController(

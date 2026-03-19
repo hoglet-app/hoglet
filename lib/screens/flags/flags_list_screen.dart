@@ -57,10 +57,24 @@ class _FlagsListScreenState extends State<FlagsListScreen> {
     super.dispose();
   }
 
+  bool _missingCredentials = false;
+
   Future<void> _load() async {
     _host = await _storage!.read(StorageService.keyHost) ?? '';
     _projectId = await _storage!.read(StorageService.keyProjectId) ?? '';
     _apiKey = await _storage!.read(StorageService.keyApiKey) ?? '';
+
+    if (_host.isEmpty || _projectId.isEmpty || _apiKey.isEmpty) {
+      if (mounted) {
+        setState(() => _missingCredentials = true);
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _missingCredentials = false);
+    }
+
     await _flagsState!.fetchFlags(
       host: _host,
       projectId: _projectId,
@@ -93,94 +107,97 @@ class _FlagsListScreenState extends State<FlagsListScreen> {
   Widget build(BuildContext context) {
     final flagsState = _flagsState;
     if (flagsState == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Center(child: CircularProgressIndicator());
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Feature Flags'),
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search flags…',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => _searchController.clear(),
-                      )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFFE3DED6)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFFE3DED6)),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                filled: true,
-                fillColor: Colors.white,
+    if (_missingCredentials) {
+      return const EmptyState(
+        icon: Icons.settings_outlined,
+        title: 'No connection configured',
+        subtitle: 'Configure your connection in Settings to get started.',
+      );
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search flags…',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => _searchController.clear(),
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE3DED6)),
               ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE3DED6)),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              filled: true,
+              fillColor: Colors.white,
             ),
           ),
-          Expanded(
-            child: SignalBuilder(
-              builder: (context, _) {
-                final isLoading = flagsState.isLoading.value;
-                final error = flagsState.error.value;
+        ),
+        Expanded(
+          child: SignalBuilder(
+            builder: (context, _) {
+              final isLoading = flagsState.isLoading.value;
+              final error = flagsState.error.value;
 
-                if (isLoading) {
-                  return const ShimmerList();
-                }
-                if (error != null) {
-                  return ErrorView(
-                    error: error,
-                    onRetry: _load,
-                  );
-                }
-
-                final flags = flagsState.flags.value;
-                final filtered = _filtered(flags);
-
-                if (filtered.isEmpty) {
-                  return EmptyState(
-                    icon: Icons.flag_outlined,
-                    title: _searchQuery.isEmpty
-                        ? 'No feature flags yet'
-                        : 'No results for "$_searchQuery"',
-                    subtitle: _searchQuery.isEmpty
-                        ? 'Create a feature flag in PostHog to see it here.'
-                        : null,
-                  );
-                }
-
-                return RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: filtered.length,
-                    itemBuilder: (context, index) {
-                      final flag = filtered[index];
-                      return _FlagRow(
-                        flag: flag,
-                        onTap: () => context.go('/flags/flag/${flag.id}'),
-                        onToggle: () => _toggle(flag),
-                      );
-                    },
-                  ),
+              if (isLoading) {
+                return const ShimmerList();
+              }
+              if (error != null) {
+                return ErrorView(
+                  error: error,
+                  onRetry: _load,
                 );
-              },
-            ),
+              }
+
+              final flags = flagsState.flags.value;
+              final filtered = _filtered(flags);
+
+              if (filtered.isEmpty) {
+                return EmptyState(
+                  icon: Icons.flag_outlined,
+                  title: _searchQuery.isEmpty
+                      ? 'No feature flags yet'
+                      : 'No results for "$_searchQuery"',
+                  subtitle: _searchQuery.isEmpty
+                      ? 'Create a feature flag in PostHog to see it here.'
+                      : null,
+                );
+              }
+
+              return RefreshIndicator(
+                onRefresh: _load,
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final flag = filtered[index];
+                    return _FlagRow(
+                      flag: flag,
+                      onTap: () => context.go('/flags/flag/${flag.id}'),
+                      onToggle: () => _toggle(flag),
+                    );
+                  },
+                ),
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
