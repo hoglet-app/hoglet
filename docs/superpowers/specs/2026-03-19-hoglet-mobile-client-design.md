@@ -35,32 +35,38 @@ Drawer includes a **project switcher** at the top (logo, project name, org, regi
 ### Navigation Behavior
 
 - Bottom tabs use `StatefulShellBranch` (GoRouter) — each tab preserves its own navigation stack.
-- Drawer items push full-screen routes outside the shell (replacing the tab bar).
+- Drawer items push full-screen routes outside the shell (replacing the tab bar). The hamburger ☰ icon remains accessible in the app bar of drawer-pushed routes so users can navigate to other sections without going back.
 - Tapping a dashboard tile navigates to Insight Detail within the Home tab stack.
 - Back button pops within the current tab/stack; long-press goes to tab root.
+
+### Project Switching
+
+- Switching projects clears all cached state (all Resources are invalidated and re-fetched).
+- The selected project ID is persisted in secure storage across app restarts.
+- During switch: show loading indicator on current screen while data re-fetches.
 
 ## Screen Inventory
 
 ### Tier 1 — Core MVP
 
-**8 screens** that make Hoglet useful from day one.
+**9 screens** (including App Shell scaffold) that make Hoglet useful from day one.
 
 #### 1. Welcome / Connect (Onboarding)
 - Region picker: US Cloud, EU Cloud, Self-hosted (custom URL)
 - Personal API key input with visibility toggle
-- Project selector (fetched after connection test)
+- Project selector (fetched via `GET /api/projects/` after successful connection test)
 - "Test Connection" button with success/error feedback
 - Persists credentials in secure storage
 - Shows on first launch or when no credentials exist
 
-#### 2. App Shell
+#### 2. App Shell (structural scaffold)
 - Scaffold with bottom NavigationBar (4 tabs) and Drawer
 - GoRouter ShellRoute wrapping all tab content
 - Drawer with sectioned navigation + project switcher
 - Hamburger icon in app bar opens drawer
 
 #### 3. Dashboard List (Home tab root)
-- Fetches all dashboards via `GET /api/environments/{id}/dashboards/`
+- Fetches all dashboards via dashboards endpoint
 - Search/filter bar at top
 - Pinned/favorite dashboards shown first
 - Each card shows: name, description snippet, tile count, last modified
@@ -68,7 +74,7 @@ Drawer includes a **project switcher** at the top (logo, project name, org, regi
 - Tap → Dashboard Detail
 
 #### 4. Dashboard Detail
-- Fetches single dashboard via `GET /api/environments/{id}/dashboards/{id}/`
+- Fetches single dashboard with its insight tiles
 - Vertical scrolling layout of insight tiles
 - Each tile renders a compact chart (trend line, number, funnel bar, table)
 - Date range filter (Last 7d, 30d, 90d, custom)
@@ -76,8 +82,9 @@ Drawer includes a **project switcher** at the top (logo, project name, org, regi
 - Tap tile → Insight Detail
 
 #### 5. Insight Detail
-- Fetches insight via `GET /api/environments/{id}/insights/{id}/`
-- Full chart rendering: line chart, bar chart, funnel, retention table, number
+- Fetches insight data
+- MVP chart types: Trends (line/bar), Funnels (horizontal bar), Number (styled card)
+- Deferred chart types: Retention (table), Lifecycle, Paths, Stickiness — show "View on web" placeholder
 - Date range picker
 - Filter/breakdown summary (read-only)
 - Supports landscape mode for wider chart viewing
@@ -89,7 +96,7 @@ Drawer includes a **project switcher** at the top (logo, project name, org, regi
 - Keep existing functionality: HogQL query, column drag-to-reorder, property discovery
 
 #### 7. Feature Flags List (Flags tab root)
-- Fetches flags via `GET /api/environments/{id}/feature_flags/`
+- Fetches flags via feature_flags endpoint
 - Search/filter bar
 - Each row: flag key, name, active/inactive badge, rollout % indicator
 - Quick toggle switch per flag (PATCH active field)
@@ -140,11 +147,12 @@ Drawer includes a **project switcher** at the top (logo, project name, org, regi
 - Tap → Replay Player
 
 #### 14. Session Replay Player
-- Simplified snapshot playback (rrweb-based snapshots rendered in WebView or custom canvas)
+- **Requires technical spike before implementation** to evaluate rrweb replay feasibility on mobile
+- Preferred approach: rrweb snapshot playback via WebView
+- Fallback if infeasible: screenshot timeline + event list (no DOM replay)
 - Event timeline scrubber at bottom
 - Console logs panel (collapsible)
 - Supports landscape mode
-- Note: Full rrweb replay fidelity may be limited on mobile; focus on usability over pixel-perfect replay
 
 #### 15. Experiments List + Detail
 - Active/completed experiments list
@@ -214,11 +222,13 @@ lib/
 │   ├── event_item.dart         // ✅ exists
 │   ├── feature_flag.dart
 │   ├── person.dart
-│   ├── experiment.dart
-│   ├── session_recording.dart
-│   ├── cohort.dart
-│   ├── survey.dart
-│   └── error_group.dart
+│   ├── column_spec.dart        // Extracted from activity_screen.dart
+│   ├── host_mode.dart          // Extracted — shared with onboarding/settings
+│   ├── experiment.dart         // Tier 2+
+│   ├── session_recording.dart  // Tier 2+
+│   ├── cohort.dart             // Tier 3
+│   ├── survey.dart             // Tier 3
+│   └── error_group.dart        // Tier 3
 │
 ├── services/                   // Pure async — no signals
 │   ├── posthog_client.dart     // ✅ exists — extend with all endpoints
@@ -232,6 +242,8 @@ lib/
 │   ├── events_state.dart
 │   ├── flags_state.dart
 │   └── persons_state.dart
+│   // Each new domain follows the same pattern: {domain}_state.dart
+│   // Tier 2/3 state files added in later phases
 │
 ├── screens/
 │   ├── shell/
@@ -281,18 +293,72 @@ PostHog API → PosthogClient (services/) → Resource/Signal (state/) → Resou
 - **Screens** use `ResourceBuilder` for async data and `SignalBuilder` for reactive UI. `Show` widget for conditional rendering (e.g., logged in vs not).
 - **Solid widget** at app root provides `PosthogClient` and `AuthService` via DI. Screens access via `context.get<T>()`.
 
+### Pagination
+
+PostHog API uses cursor-based pagination (`next` URL in response body). Strategy per list screen:
+
+- **Infinite scroll** for all list screens (dashboards, insights, flags, persons, events, etc.)
+- Custom `PaginatedSignal<T>` pattern wrapping: `ListSignal<T>` (accumulated items) + `Signal<String?>` (next cursor) + `Signal<bool>` (isLoadingMore)
+- `Resource` is used for the initial fetch; subsequent pages are appended via `loadMore()` method on the paginated signal
+- The existing `_fetchPagedResults` pattern in `PosthogClient` is extended to all list endpoints
+- Pull-to-refresh resets cursor and re-fetches from the beginning
+
+### Chart Rendering Strategy
+
+**MVP supported types:**
+| PostHog Type | Rendering | fl_chart widget |
+|---|---|---|
+| Trends | Line chart or bar chart | LineChart / BarChart |
+| Funnels | Horizontal stacked bars | BarChart (horizontal) |
+| Number | Styled text card with delta | Custom widget (no chart) |
+
+**Deferred types (show placeholder card with "View on web" link):**
+- Retention (grid table — needs custom widget, not a chart)
+- Lifecycle (stacked bar — doable but lower priority)
+- Paths (Sankey/network diagram — fl_chart does not support)
+- Stickiness (bar chart variant — doable but lower priority)
+
+**InsightResult model:** Parsed from the insight API response's `result` field. Contains series data (labels, values, timestamps) that maps to fl_chart's `FlSpot` / `BarChartGroupData`.
+
+### Error Handling
+
+**Typed error hierarchy:**
+- `PosthogApiError` — base class with status code and message
+- `AuthenticationError` (401/403) — triggers redirect to onboarding, clears credentials
+- `RateLimitError` (429) — shows "Too many requests, try again in X seconds" with retry-after
+- `NetworkError` — connection timeout, no internet. Distinct from API errors.
+
+**Policies:**
+- HTTP timeout: 15 seconds for list endpoints, 30 seconds for query/heavy endpoints
+- 401 handling: clear stored credentials, redirect to Welcome screen
+- 429 handling: parse `Retry-After` header, show countdown toast
+- All `ResourceBuilder` screens show error state with retry button
+- Network errors show distinct "No connection" state
+
+### Caching
+
+MVP approach — in-memory only, no persistent cache:
+- `Resource` instances hold their last successful value in memory
+- On re-fetch failure, stale data is shown with an "Update failed" banner
+- Project switch invalidates all Resources (triggers fresh fetches)
+- No SQLite/Hive persistent cache for MVP — add in Phase 6 if needed
+
 ### API Endpoints
+
+> **Note:** Endpoint paths must be verified against PostHog API docs during implementation. The existing query endpoint uses `/api/projects/{id}/query/` (not environments). Other endpoints may use `projects` or `environments` — verify each one.
 
 #### Tier 1 (MVP)
 ```
+GET   /api/projects/                                 # project discovery for onboarding
+GET   /api/organizations/                            # org info for project switcher
 GET   /api/environments/{id}/dashboards/
 GET   /api/environments/{id}/dashboards/{id}/
 GET   /api/environments/{id}/insights/
 GET   /api/environments/{id}/insights/{id}/
-POST  /api/projects/{id}/query/                    # ✅ exists (HogQL)
+POST  /api/projects/{id}/query/                      # ✅ exists (HogQL)
 GET   /api/environments/{id}/feature_flags/
 GET   /api/environments/{id}/feature_flags/{id}/
-PATCH /api/environments/{id}/feature_flags/{id}/   # toggle active
+PATCH /api/environments/{id}/feature_flags/{id}/     # toggle active
 ```
 
 #### Tier 2
@@ -332,23 +398,38 @@ Preserve existing Hoglet brand:
 - Font: Space Grotesk (Google Fonts)
 - Material 3 design language
 
+### Testing Strategy
+
+- **Models:** fromJson/toJson round-trip tests for all data classes
+- **Services:** Mock HTTP tests for each PosthogClient method
+- **Widgets:** Widget tests for critical flows (onboarding, flag toggle, dashboard navigation)
+- **Integration:** Golden tests deferred to Phase 6
+
+### Deep Linking
+
+Deferred to Phase 6. Routes should be designed with path-based patterns (e.g., `/dashboard/:id`, `/flag/:id`) to make deep link support straightforward when added.
+
 ## Implementation Order
 
-Stacking PR workflow: each tier/phase is a branch stacked on the previous.
+Stacking PR workflow: each phase is a branch stacked on the previous.
 
 ### Phase 0: Foundation
 - Add dependencies: `flutter_solidart`, `go_router`, `fl_chart`
+- Extract shared models from activity_screen.dart: `ColumnSpec`, `ColumnOption`, `ColumnCategory`, `BuiltinColumnId`, `ColumnKind` → `models/column_spec.dart`; `HostMode` → `models/host_mode.dart`
+- Extract settings/storage logic into `auth_service.dart` and `storage_service.dart`
 - Set up project structure (routing/, state/, screens/shell/)
 - Implement AppShell with bottom tabs + drawer skeleton
 - Migrate existing Settings from modal to Settings tab
 - Wire up Solid DI at app root
+- Add `GET /api/projects/` and `GET /api/organizations/` to PosthogClient for onboarding
 
 ### Phase 1: Dashboard (Home tab)
 - Dashboard model + PosthogClient endpoints
 - dashboard_state.dart with Resource
-- Dashboard List screen
+- Dashboard List screen with pagination
 - Dashboard Detail screen with compact insight tiles
-- Insight Detail screen with full chart rendering (chart_renderer widget)
+- Insight Detail screen with chart_renderer widget (Trends, Funnels, Number)
+- "View on web" placeholder for unsupported insight types
 
 ### Phase 2: Feature Flags (Flags tab)
 - FeatureFlag model + PosthogClient endpoints
@@ -364,7 +445,8 @@ Stacking PR workflow: each tier/phase is a branch stacked on the previous.
 ### Phase 4: Tier 2 screens
 - Persons List + Detail
 - Saved Insights List (reuse Insight Detail)
-- Session Replay List + Player
+- Technical spike: Session Replay Player feasibility (rrweb via WebView vs screenshot fallback)
+- Session Replay List + Player (based on spike results)
 - Experiments List + Detail
 
 ### Phase 5: Tier 3 screens
@@ -374,5 +456,7 @@ Stacking PR workflow: each tier/phase is a branch stacked on the previous.
 - Onboarding flow improvements
 - Dark mode
 - Landscape chart support
+- Deep linking support
+- Persistent cache (if needed)
 - Performance optimization
 - App store preparation
