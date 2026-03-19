@@ -34,9 +34,9 @@ class _DashboardDetailScreenState extends State<DashboardDetailScreen> {
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      _dashboardState = dashboardStateProvider.of(context);
-      _storage = storageServiceProvider.of(context);
-      _client = posthogClientProvider.of(context);
+      _dashboardState = AppProviders.of(context).dashboardState;
+      _storage = AppProviders.of(context).storage;
+      _client = AppProviders.of(context).client;
       _load();
     }
   }

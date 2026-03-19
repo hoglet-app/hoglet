@@ -45,8 +45,8 @@ class _FlagsListScreenState extends State<FlagsListScreen> {
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      _flagsState = flagsStateProvider.of(context);
-      _storage = storageServiceProvider.of(context);
+      _flagsState = AppProviders.of(context).flagsState;
+      _storage = AppProviders.of(context).storage;
       _load();
     }
   }

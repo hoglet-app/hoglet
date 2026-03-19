@@ -30,8 +30,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      _eventsState = eventsStateProvider.of(context);
-      _storage = storageServiceProvider.of(context);
+      _eventsState = AppProviders.of(context).eventsState;
+      _storage = AppProviders.of(context).storage;
       _init();
     }
   }

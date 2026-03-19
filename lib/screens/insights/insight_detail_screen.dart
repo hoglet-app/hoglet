@@ -28,8 +28,8 @@ class _InsightDetailScreenState extends State<InsightDetailScreen> {
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      _insightsState = insightsStateProvider.of(context);
-      _storage = storageServiceProvider.of(context);
+      _insightsState = AppProviders.of(context).insightsState;
+      _storage = AppProviders.of(context).storage;
       _load();
     }
   }

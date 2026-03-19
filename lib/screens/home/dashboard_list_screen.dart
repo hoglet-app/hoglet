@@ -39,8 +39,8 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      _dashboardState = dashboardStateProvider.of(context);
-      _storage = storageServiceProvider.of(context);
+      _dashboardState = AppProviders.of(context).dashboardState;
+      _storage = AppProviders.of(context).storage;
       _load();
     }
   }
