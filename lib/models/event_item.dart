@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class EventItem {
   final String uuid;
   final String event;
@@ -19,11 +21,16 @@ class EventItem {
     Map<String, dynamic> properties = {};
     if (propsRaw is Map<String, dynamic>) {
       properties = propsRaw;
-    } else if (propsRaw is String) {
-      // Sometimes properties come as JSON string
+    } else if (propsRaw is Map) {
+      properties = Map<String, dynamic>.from(propsRaw);
+    } else if (propsRaw is String && propsRaw.isNotEmpty) {
       try {
-        final parsed = _tryParseJson(propsRaw);
-        if (parsed is Map<String, dynamic>) properties = parsed;
+        final parsed = jsonDecode(propsRaw);
+        if (parsed is Map<String, dynamic>) {
+          properties = parsed;
+        } else if (parsed is Map) {
+          properties = Map<String, dynamic>.from(parsed);
+        }
       } catch (_) {}
     }
 
@@ -45,14 +52,24 @@ class EventItem {
     return '${timestamp.month}/${timestamp.day}';
   }
 
+  String get fullTimestamp {
+    return '${timestamp.year}-${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')} '
+        '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}:${timestamp.second.toString().padLeft(2, '0')}';
+  }
+
   String? getProperty(String key) {
     final value = properties[key];
     if (value == null) return null;
     return value.toString();
   }
-}
 
-dynamic _tryParseJson(String s) {
-  // Avoid importing dart:convert here — caller handles it
-  return s;
+  /// URL or screen this event occurred on
+  String? get pageUrl => getProperty('\$current_url') ?? getProperty('\$screen_name');
+  String? get browser => getProperty('\$browser');
+  String? get os => getProperty('\$os');
+  String? get deviceType => getProperty('\$device_type');
+  String? get city => getProperty('\$geoip_city_name');
+  String? get countryCode => getProperty('\$geoip_country_code');
+  String? get referrer => getProperty('\$referring_domain');
+  String? get lib => getProperty('\$lib');
 }
