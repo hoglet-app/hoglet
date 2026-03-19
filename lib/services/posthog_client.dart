@@ -25,6 +25,43 @@ class PosthogClient {
     throw PosthogApiError(response.statusCode, reason);
   }
 
+  Future<http.Response> _get(Uri uri, String apiKey,
+      {Duration timeout = const Duration(seconds: 15)}) async {
+    try {
+      final response = await http.get(
+        uri,
+        headers: {'Authorization': 'Bearer $apiKey'},
+      ).timeout(timeout);
+      _checkResponse(response);
+      return response;
+    } on SocketException catch (e) {
+      throw NetworkError('No internet connection', cause: e);
+    } on TimeoutException {
+      throw NetworkError('Request timed out');
+    }
+  }
+
+  Future<http.Response> _post(
+      Uri uri, String apiKey, Map<String, dynamic> body,
+      {Duration timeout = const Duration(seconds: 30)}) async {
+    try {
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode(body),
+      ).timeout(timeout);
+      _checkResponse(response);
+      return response;
+    } on SocketException catch (e) {
+      throw NetworkError('No internet connection', cause: e);
+    } on TimeoutException {
+      throw NetworkError('Request timed out');
+    }
+  }
+
   Future<List<EventItem>> fetchEvents({
     required String host,
     required String projectId,
@@ -40,22 +77,7 @@ class PosthogClient {
       },
     };
 
-    final http.Response response;
-    try {
-      response = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 30));
-    } on SocketException catch (e) {
-      throw NetworkError('No internet connection', cause: e);
-    } on TimeoutException {
-      throw NetworkError('Request timed out');
-    }
-    _checkResponse(response);
+    final response = await _post(uri, apiKey, body);
 
     final decoded = jsonDecode(response.body);
     final results = decoded is Map && decoded['results'] is List
@@ -137,20 +159,7 @@ class PosthogClient {
     Uri? next = uri;
 
     while (next != null) {
-      final http.Response response;
-      try {
-        response = await http.get(
-          next,
-          headers: {
-            'Authorization': 'Bearer $apiKey',
-          },
-        ).timeout(const Duration(seconds: 15));
-      } on SocketException catch (e) {
-        throw NetworkError('No internet connection', cause: e);
-      } on TimeoutException {
-        throw NetworkError('Request timed out');
-      }
-      _checkResponse(response);
+      final response = await _get(next, apiKey);
 
       final decoded = jsonDecode(response.body);
       if (decoded is Map && decoded['results'] is List) {
@@ -166,5 +175,37 @@ class PosthogClient {
     }
 
     return allResults;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchProjects({
+    required String host,
+    required String apiKey,
+  }) async {
+    final uri = Uri.parse('$host/api/projects/');
+    final response = await _get(uri, apiKey);
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map && decoded['results'] is List) {
+      return (decoded['results'] as List).cast<Map<String, dynamic>>();
+    }
+    if (decoded is List) {
+      return decoded.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  Future<List<Map<String, dynamic>>> fetchOrganizations({
+    required String host,
+    required String apiKey,
+  }) async {
+    final uri = Uri.parse('$host/api/organizations/');
+    final response = await _get(uri, apiKey);
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map && decoded['results'] is List) {
+      return (decoded['results'] as List).cast<Map<String, dynamic>>();
+    }
+    if (decoded is List) {
+      return decoded.cast<Map<String, dynamic>>();
+    }
+    return [];
   }
 }
