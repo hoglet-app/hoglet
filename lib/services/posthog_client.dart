@@ -1,10 +1,30 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
 import '../models/event_item.dart';
+import 'posthog_api_error.dart';
 
 class PosthogClient {
+  void _checkResponse(http.Response response) {
+    if (response.statusCode >= 200 && response.statusCode < 300) return;
+
+    final reason = response.reasonPhrase ?? 'Request failed';
+
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      throw AuthenticationError(response.statusCode, reason);
+    }
+
+    if (response.statusCode == 429) {
+      final retryAfter = int.tryParse(response.headers['retry-after'] ?? '');
+      throw RateLimitError(response.statusCode, reason, retryAfterSeconds: retryAfter);
+    }
+
+    throw PosthogApiError(response.statusCode, reason);
+  }
+
   Future<List<EventItem>> fetchEvents({
     required String host,
     required String projectId,
@@ -20,19 +40,22 @@ class PosthogClient {
       },
     };
 
-    final response = await http.post(
-      uri,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $apiKey',
-      },
-      body: jsonEncode(body),
-    );
-
-    if (response.statusCode != 200) {
-      final reason = response.reasonPhrase ?? 'Request failed';
-      throw Exception('$reason (${response.statusCode})');
+    final http.Response response;
+    try {
+      response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 30));
+    } on SocketException catch (e) {
+      throw NetworkError('No internet connection', cause: e);
+    } on TimeoutException {
+      throw NetworkError('Request timed out');
     }
+    _checkResponse(response);
 
     final decoded = jsonDecode(response.body);
     final results = decoded is Map && decoded['results'] is List
@@ -114,17 +137,20 @@ class PosthogClient {
     Uri? next = uri;
 
     while (next != null) {
-      final response = await http.get(
-        next,
-        headers: {
-          'Authorization': 'Bearer $apiKey',
-        },
-      );
-
-      if (response.statusCode != 200) {
-        final reason = response.reasonPhrase ?? 'Request failed';
-        throw Exception('$reason (${response.statusCode})');
+      final http.Response response;
+      try {
+        response = await http.get(
+          next,
+          headers: {
+            'Authorization': 'Bearer $apiKey',
+          },
+        ).timeout(const Duration(seconds: 15));
+      } on SocketException catch (e) {
+        throw NetworkError('No internet connection', cause: e);
+      } on TimeoutException {
+        throw NetworkError('Request timed out');
       }
+      _checkResponse(response);
 
       final decoded = jsonDecode(response.body);
       if (decoded is Map && decoded['results'] is List) {
