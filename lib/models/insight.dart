@@ -14,6 +14,7 @@ class Insight {
   final String name;
   final String? description;
   final InsightDisplayType displayType;
+  final String chartDisplay; // ActionsLineGraph, ActionsPie, ActionsBar, ActionsTable, BoldNumber, etc.
   final InsightResult? result;
   final Map<String, dynamic>? filters;
   final Map<String, dynamic>? query;
@@ -24,14 +25,21 @@ class Insight {
     required this.name,
     this.description,
     required this.displayType,
+    this.chartDisplay = 'ActionsLineGraph',
     this.result,
     this.filters,
     this.query,
     this.raw = const {},
   });
 
+  bool get isPie => chartDisplay == 'ActionsPie';
+  bool get isBar => chartDisplay == 'ActionsBar' || chartDisplay == 'ActionsBarValue';
+  bool get isTable => chartDisplay == 'ActionsTable';
+  bool get isWorldMap => chartDisplay == 'WorldMap';
+
   factory Insight.fromJson(Map<String, dynamic> json) {
     final displayType = _detectDisplayType(json);
+    final chartDisplay = _detectChartDisplay(json);
 
     // Unwrap InsightVizNode if present
     var resultData = json['result'];
@@ -49,6 +57,7 @@ class Insight {
       name: json['name']?.toString() ?? 'Untitled',
       description: json['description']?.toString(),
       displayType: displayType,
+      chartDisplay: chartDisplay,
       result: resultData != null
           ? InsightResult.parse(resultData, displayType)
           : null,
@@ -310,6 +319,30 @@ InsightDisplayType _kindToType(String kind) {
     default:
       return InsightDisplayType.unknown;
   }
+}
+
+String _detectChartDisplay(Map<String, dynamic> json) {
+  // Check query.source.trendsFilter.display or query.source.display
+  final query = json['query'] as Map<String, dynamic>?;
+  if (query != null) {
+    final source = query['source'] as Map<String, dynamic>? ?? query;
+    final trendsFilter = source['trendsFilter'] as Map<String, dynamic>?;
+    if (trendsFilter != null) {
+      final display = trendsFilter['display']?.toString();
+      if (display != null) return display;
+    }
+    final display = source['display']?.toString();
+    if (display != null) return display;
+  }
+
+  // Check legacy filters.display
+  final filters = json['filters'] as Map<String, dynamic>?;
+  if (filters != null) {
+    final display = filters['display']?.toString();
+    if (display != null) return display;
+  }
+
+  return 'ActionsLineGraph';
 }
 
 InsightDisplayType _insightStringToType(String insight) {

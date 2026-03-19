@@ -24,6 +24,11 @@ class ChartRenderer extends StatelessWidget {
       return _UnsupportedChart(insight: insight, height: height);
     }
 
+    // Pie chart override for trends with ActionsPie display
+    if (insight.isPie && insight.result != null && insight.result!.series.isNotEmpty) {
+      return _PieChartView(result: insight.result!, height: height);
+    }
+
     switch (insight.displayType) {
       case InsightDisplayType.trends:
         return _TrendsChart(result: insight.result!, height: height);
@@ -349,6 +354,103 @@ class _DeltaBadge extends StatelessWidget {
       ],
     );
   }
+}
+
+// -- Pie Chart (for ActionsPie display) --
+
+const _pieSeriesColors = [
+  Color(0xFF4C6EF5), Color(0xFF12B886), Color(0xFFF59F00),
+  Color(0xFFFA5252), Color(0xFF7950F2), Color(0xFFFF922B),
+  Color(0xFF20C997), Color(0xFFE64980), Color(0xFF5C7CFA),
+  Color(0xFF82C91E), Color(0xFF339AF0), Color(0xFFF06595),
+];
+
+class _PieChartView extends StatelessWidget {
+  final InsightResult result;
+  final double height;
+  const _PieChartView({required this.result, required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final series = result.series;
+
+    // Each series represents a slice — use the sum of its values (or aggregated_value)
+    final slices = <_PieSlice>[];
+    for (var i = 0; i < series.length; i++) {
+      final s = series[i];
+      final total = s.values.fold<double>(0, (sum, v) => sum + v);
+      if (total > 0) {
+        slices.add(_PieSlice(label: s.label, value: total, color: _pieSeriesColors[i % _pieSeriesColors.length]));
+      }
+    }
+
+    if (slices.isEmpty) {
+      return SizedBox(height: height, child: const Center(child: Text('No data')));
+    }
+
+    final grandTotal = slices.fold<double>(0, (sum, s) => sum + s.value);
+
+    final sections = slices.map((s) {
+      final pct = grandTotal > 0 ? (s.value / grandTotal * 100) : 0.0;
+      return PieChartSectionData(
+        value: s.value,
+        color: s.color,
+        radius: 44,
+        title: pct >= 5 ? '${pct.toStringAsFixed(0)}%' : '',
+        titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+        titlePositionPercentageOffset: 0.55,
+      );
+    }).toList();
+
+    return Column(
+      children: [
+        SizedBox(
+          height: height - 16,
+          child: PieChart(PieChartData(
+            sections: sections,
+            centerSpaceRadius: 28,
+            sectionsSpace: 2,
+            borderData: FlBorderData(show: false),
+          )),
+        ),
+        // Legend
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            alignment: WrapAlignment.center,
+            children: slices.map((s) {
+              final pct = grandTotal > 0 ? (s.value / grandTotal * 100).toStringAsFixed(1) : '0';
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 8, height: 8, decoration: BoxDecoration(color: s.color, borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${_truncateLabel(s.label)} $pct%',
+                    style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                  ),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _truncateLabel(String label) {
+    return label.length > 20 ? '${label.substring(0, 17)}...' : label;
+  }
+}
+
+class _PieSlice {
+  final String label;
+  final double value;
+  final Color color;
+  _PieSlice({required this.label, required this.value, required this.color});
 }
 
 // -- Unsupported Chart --
