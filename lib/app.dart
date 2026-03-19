@@ -1,6 +1,8 @@
+import 'package:disco/disco.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'di/providers.dart';
 import 'routing/app_router.dart';
 
 class HogletApp extends StatefulWidget {
@@ -17,17 +19,25 @@ class _HogletAppState extends State<HogletApp> {
   Widget build(BuildContext context) {
     final textTheme = GoogleFonts.spaceGroteskTextTheme();
 
-    return MaterialApp.router(
-      title: 'Hoglet',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFF15A24),
-          brightness: Brightness.light,
+    return ProviderScope(
+      providers: [
+        posthogClientProvider,
+        storageServiceProvider,
+        dashboardStateProvider,
+        insightsStateProvider,
+      ],
+      child: MaterialApp.router(
+        title: 'Hoglet',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFFF15A24),
+            brightness: Brightness.light,
+          ),
+          textTheme: textTheme,
+          useMaterial3: true,
         ),
-        textTheme: textTheme,
-        useMaterial3: true,
+        routerConfig: _router,
       ),
-      routerConfig: _router,
     );
   }
 }
