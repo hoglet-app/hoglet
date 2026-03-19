@@ -38,6 +38,7 @@ dependencies:
   google_fonts: ^6.2.1
   http: ^1.2.2
   flutter_solidart: ^2.7.1
+  solidart: ^2.8.1
   go_router: ^17.0.0
   fl_chart: ^0.70.2
 

@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../screens/activity/activity_screen.dart';
+import '../screens/cohorts/cohort_detail_screen.dart';
+import '../screens/cohorts/cohorts_list_screen.dart';
 import '../screens/flags/flag_detail_screen.dart';
 import '../screens/flags/flags_list_screen.dart';
 import '../screens/home/dashboard_detail_screen.dart';
 import '../screens/home/dashboard_list_screen.dart';
 import '../screens/insights/insight_detail_screen.dart';
 import '../screens/onboarding/welcome_screen.dart';
+import '../screens/persons/person_detail_screen.dart';
+import '../screens/persons/persons_list_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/shell/app_shell.dart';
 import 'route_names.dart';
@@ -101,6 +105,37 @@ final appRouter = GoRouter(
               builder: (context, state) => const SettingsScreen(),
             ),
           ],
+        ),
+      ],
+    ),
+    // Drawer routes (full-screen, outside shell)
+    GoRoute(
+      path: RoutePaths.persons,
+      name: RouteNames.persons,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const PersonsListScreen(),
+      routes: [
+        GoRoute(
+          path: RoutePaths.personDetail,
+          name: RouteNames.personDetail,
+          builder: (context, state) => PersonDetailScreen(
+            personId: state.pathParameters['personId']!,
+          ),
+        ),
+      ],
+    ),
+    GoRoute(
+      path: RoutePaths.cohorts,
+      name: RouteNames.cohorts,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const CohortsListScreen(),
+      routes: [
+        GoRoute(
+          path: RoutePaths.cohortDetail,
+          name: RouteNames.cohortDetail,
+          builder: (context, state) => CohortDetailScreen(
+            cohortId: state.pathParameters['cohortId']!,
+          ),
         ),
       ],
     ),

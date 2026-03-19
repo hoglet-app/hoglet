@@ -358,7 +358,7 @@ packages:
     source: sdk
     version: "0.0.0"
   solidart:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: solidart
       sha256: "15c7ef3e91d35dd653f265fa530c9e50071a1de0301679b36bca3d355eb21cc8"

@@ -3,10 +3,12 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/cohort.dart';
 import '../models/dashboard.dart';
 import '../models/event_item.dart';
 import '../models/feature_flag.dart';
 import '../models/insight.dart';
+import '../models/person.dart';
 import 'posthog_api_error.dart';
 
 class PosthogClient {
@@ -297,6 +299,43 @@ class PosthogClient {
       }
     }
     return [];
+  }
+
+  // -- Persons --
+
+  Future<List<Person>> fetchPersons(
+    String host, String projectId, String apiKey, {
+    String? search,
+  }) async {
+    final params = <String, String>{};
+    if (search != null && search.isNotEmpty) params['search'] = search;
+    final data = await _get(host, '/api/environments/$projectId/persons/', apiKey, queryParams: params.isNotEmpty ? params : null);
+    final results = data['results'] as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => Person.fromJson(j)).toList();
+  }
+
+  Future<Person> fetchPerson(String host, String projectId, String apiKey, int personId) async {
+    final data = await _get(host, '/api/environments/$projectId/persons/$personId/', apiKey);
+    return Person.fromJson(data as Map<String, dynamic>);
+  }
+
+  // -- Cohorts --
+
+  Future<List<Cohort>> fetchCohorts(String host, String projectId, String apiKey) async {
+    final data = await _get(host, '/api/projects/$projectId/cohorts/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => Cohort.fromJson(j)).toList();
+  }
+
+  Future<Cohort> fetchCohort(String host, String projectId, String apiKey, int cohortId) async {
+    final data = await _get(host, '/api/projects/$projectId/cohorts/$cohortId/', apiKey);
+    return Cohort.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<List<Person>> fetchCohortPersons(String host, String projectId, String apiKey, int cohortId) async {
+    final data = await _get(host, '/api/projects/$projectId/cohorts/$cohortId/persons/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => Person.fromJson(j)).toList();
   }
 
   void dispose() {

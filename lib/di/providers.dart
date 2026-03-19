@@ -2,10 +2,12 @@ import 'package:flutter/widgets.dart';
 
 import '../services/posthog_client.dart';
 import '../services/storage_service.dart';
+import '../state/cohorts_state.dart';
 import '../state/dashboard_state.dart';
 import '../state/events_state.dart';
 import '../state/flags_state.dart';
 import '../state/insights_state.dart';
+import '../state/persons_state.dart';
 
 class AppProviders extends InheritedWidget {
   final PosthogClient client;
@@ -14,6 +16,8 @@ class AppProviders extends InheritedWidget {
   final InsightsState insightsState;
   final FlagsState flagsState;
   final EventsState eventsState;
+  final PersonsState personsState;
+  final CohortsState cohortsState;
 
   const AppProviders({
     super.key,
@@ -23,6 +27,8 @@ class AppProviders extends InheritedWidget {
     required this.insightsState,
     required this.flagsState,
     required this.eventsState,
+    required this.personsState,
+    required this.cohortsState,
     required super.child,
   });
 

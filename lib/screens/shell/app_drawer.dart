@@ -38,12 +38,12 @@ class AppDrawer extends StatelessWidget {
           _DrawerItem(
             icon: Icons.person,
             label: 'Persons',
-            onTap: () => _showComingSoon(context, 'Persons'),
+            onTap: () => _navigateToRoute(context, '/persons'),
           ),
           _DrawerItem(
             icon: Icons.people,
             label: 'Cohorts',
-            onTap: () => _showComingSoon(context, 'Cohorts'),
+            onTap: () => _navigateToRoute(context, '/cohorts'),
           ),
           _SectionHeader('FEATURE MANAGEMENT'),
           _DrawerItem(
@@ -126,6 +126,11 @@ class AppDrawer extends StatelessWidget {
     Navigator.of(context).pop(); // close drawer
     final shell = StatefulNavigationShell.maybeOf(context);
     shell?.goBranch(tabIndex, initialLocation: true);
+  }
+
+  void _navigateToRoute(BuildContext context, String path) {
+    Navigator.of(context).pop(); // close drawer
+    GoRouter.of(context).push(path);
   }
 
   void _showComingSoon(BuildContext context, String feature) {
