@@ -6,6 +6,7 @@ import 'routing/app_router.dart';
 import 'services/posthog_client.dart';
 import 'services/storage_service.dart';
 import 'state/dashboard_state.dart';
+import 'state/flags_state.dart';
 import 'state/insights_state.dart';
 
 class HogletApp extends StatefulWidget {
@@ -20,6 +21,7 @@ class _HogletAppState extends State<HogletApp> {
   late final StorageService _storage;
   late final DashboardState _dashboardState;
   late final InsightsState _insightsState;
+  late final FlagsState _flagsState;
 
   @override
   void initState() {
@@ -28,12 +30,14 @@ class _HogletAppState extends State<HogletApp> {
     _storage = StorageService();
     _dashboardState = DashboardState();
     _insightsState = InsightsState();
+    _flagsState = FlagsState();
   }
 
   @override
   void dispose() {
     _dashboardState.dispose();
     _insightsState.dispose();
+    _flagsState.dispose();
     _client.dispose();
     super.dispose();
   }
@@ -45,6 +49,7 @@ class _HogletAppState extends State<HogletApp> {
       storage: _storage,
       dashboardState: _dashboardState,
       insightsState: _insightsState,
+      flagsState: _flagsState,
       child: MaterialApp.router(
         title: 'Hoglet',
         debugShowCheckedModeBanner: false,

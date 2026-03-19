@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../screens/flags/flag_detail_screen.dart';
+import '../screens/flags/flags_list_screen.dart';
 import '../screens/home/dashboard_detail_screen.dart';
 import '../screens/home/dashboard_list_screen.dart';
 import '../screens/insights/insight_detail_screen.dart';
@@ -76,8 +78,16 @@ final appRouter = GoRouter(
             GoRoute(
               path: RoutePaths.flags,
               name: RouteNames.flags,
-              builder: (context, state) =>
-                  const _PlaceholderScreen(title: 'Feature Flags', icon: Icons.flag),
+              builder: (context, state) => const FlagsListScreen(),
+              routes: [
+                GoRoute(
+                  path: RoutePaths.flagDetail,
+                  name: RouteNames.flagDetail,
+                  builder: (context, state) => FlagDetailScreen(
+                    flagId: state.pathParameters['flagId']!,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

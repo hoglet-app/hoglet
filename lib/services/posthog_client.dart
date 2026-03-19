@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/dashboard.dart';
+import '../models/feature_flag.dart';
 import '../models/insight.dart';
 import 'posthog_api_error.dart';
 
@@ -52,6 +53,29 @@ class PosthogClient {
     try {
       final response = await _httpClient
           .post(
+            _uri(host, path),
+            headers: _headers(apiKey),
+            body: jsonEncode(body),
+          )
+          .timeout(timeout);
+      return _handleResponse(response);
+    } on TimeoutException {
+      throw NetworkError('Request timed out');
+    } on http.ClientException catch (e) {
+      throw NetworkError('Connection failed', cause: e);
+    }
+  }
+
+  Future<dynamic> _patch(
+    String host,
+    String path,
+    String apiKey,
+    Map<String, dynamic> body, {
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    try {
+      final response = await _httpClient
+          .patch(
             _uri(host, path),
             headers: _headers(apiKey),
             body: jsonEncode(body),
@@ -169,6 +193,51 @@ class PosthogClient {
       timeout: const Duration(seconds: 30),
     );
     return Insight.fromJson(data as Map<String, dynamic>);
+  }
+
+  // -- Feature Flags --
+
+  Future<List<FeatureFlag>> fetchFeatureFlags(
+    String host,
+    String projectId,
+    String apiKey,
+  ) async {
+    final data = await _get(host, '/api/environments/$projectId/feature_flags/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results
+        .whereType<Map<String, dynamic>>()
+        .map((json) => FeatureFlag.fromJson(json))
+        .toList();
+  }
+
+  Future<FeatureFlag> fetchFeatureFlag(
+    String host,
+    String projectId,
+    String apiKey,
+    int flagId,
+  ) async {
+    final data = await _get(
+      host,
+      '/api/environments/$projectId/feature_flags/$flagId/',
+      apiKey,
+    );
+    return FeatureFlag.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<FeatureFlag> toggleFeatureFlag(
+    String host,
+    String projectId,
+    String apiKey,
+    int flagId,
+    bool active,
+  ) async {
+    final data = await _patch(
+      host,
+      '/api/environments/$projectId/feature_flags/$flagId/',
+      apiKey,
+      {'active': active},
+    );
+    return FeatureFlag.fromJson(data as Map<String, dynamic>);
   }
 
   void dispose() {
