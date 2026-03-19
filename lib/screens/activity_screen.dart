@@ -1,12 +1,13 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_solidart/flutter_solidart.dart';
 
+import '../di/providers.dart';
 import '../models/column_spec.dart';
 import '../models/event_item.dart';
-import '../models/host_mode.dart';
-import '../services/posthog_client.dart';
+import '../services/storage_service.dart';
+import '../state/events_state.dart';
 
 class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
@@ -15,306 +16,102 @@ class ActivityScreen extends StatefulWidget {
   State<ActivityScreen> createState() => _ActivityScreenState();
 }
 
-class _ActivityScreenState extends State<ActivityScreen>
-    with WidgetsBindingObserver {
-  static const _storage = FlutterSecureStorage();
-  static const _keyHost = 'posthog_host';
-  static const _keyHostMode = 'posthog_host_mode';
-  static const _keyCustomHost = 'posthog_custom_host';
-  static const _keyProjectId = 'posthog_project_id';
-  static const _keyApiKey = 'posthog_personal_api_key';
-  static const _keyVisibleColumns = 'hoglet_visible_columns';
+class _ActivityScreenState extends State<ActivityScreen> {
+  EventsState? _eventsState;
+  StorageService? _storage;
+  bool _initialized = false;
 
-  final _client = PosthogClient();
-
-  final _customHostController = TextEditingController();
-  final _projectIdController = TextEditingController();
-  final _apiKeyController = TextEditingController();
-
-  final List<EventItem> _events = [];
-  bool _isLoading = false;
-  HostMode _hostMode = HostMode.us;
-
-  final List<String> _visibleColumnKeys = [];
-  final Map<String, ColumnSpec> _columnRegistry = {};
-  final List<ColumnOption> _availableColumns = [];
-  bool _isLoadingColumns = false;
+  // UI-only state for the column config dialog
   String _columnSearch = '';
   ColumnCategory _selectedCategory = ColumnCategory.event;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _registerBuiltinColumns();
-    _loadSettings();
-  }
-
-  @override
-  void dispose() {
-    _customHostController.dispose();
-    _projectIdController.dispose();
-    _apiKeyController.dispose();
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
-      _persistSettings();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      _initialized = true;
+      _eventsState = eventsStateProvider.of(context);
+      _storage = storageServiceProvider.of(context);
+      _init();
     }
   }
 
-  Future<void> _loadSettings() async {
-    final host = await _storage.read(key: _keyHost) ?? '';
-    final hostMode = await _storage.read(key: _keyHostMode) ?? 'us';
-    final customHost = await _storage.read(key: _keyCustomHost) ?? '';
-    final projectId = await _storage.read(key: _keyProjectId) ?? '';
-    final apiKey = await _storage.read(key: _keyApiKey) ?? '';
-    final visibleColumnsRaw = await _storage.read(key: _keyVisibleColumns);
+  Future<void> _init() async {
+    final eventsState = _eventsState!;
+    final storage = _storage!;
 
-    if (!mounted) return;
+    eventsState.registerBuiltinColumns();
+    await eventsState.loadVisibleColumns();
 
-    setState(() {
-      _hostMode = HostModeX.fromStorage(hostMode);
-      _customHostController.text = customHost;
-      _projectIdController.text = projectId;
-      _apiKeyController.text = apiKey;
-    });
+    final host = await storage.read(StorageService.keyHost) ?? '';
+    final projectId = await storage.read(StorageService.keyProjectId) ?? '';
+    final apiKey = await storage.read(StorageService.keyApiKey) ?? '';
 
-    _restoreVisibleColumns(visibleColumnsRaw);
-
-    if (host.isNotEmpty && _hostMode != HostMode.custom) {
-      _customHostController.text = '';
-    }
-  }
-
-  // ignore: unused_element
-  Future<void> _saveSettings() async {
-    final host = _normalizeHost(_effectiveHost);
-    final projectId = _projectIdController.text.trim();
-    final apiKey = _apiKeyController.text.trim();
-
-    if (host.isEmpty || projectId.isEmpty || apiKey.isEmpty) {
-      _setStatus('Please fill host, project ID, and API key.');
-      return;
-    }
-
-    await _storage.write(key: _keyHost, value: host);
-    await _storage.write(key: _keyHostMode, value: _hostMode.storageValue);
-    await _storage.write(
-      key: _keyCustomHost,
-      value: _customHostController.text.trim(),
-    );
-    await _storage.write(key: _keyProjectId, value: projectId);
-    await _storage.write(key: _keyApiKey, value: apiKey);
-    await _storage.write(
-      key: _keyVisibleColumns,
-      value: jsonEncode(_visibleColumnKeys),
-    );
-
-    if (!mounted) return;
-
-    _setStatus('Saved settings.');
-  }
-
-  Future<void> _persistSettings() async {
-    await _storage.write(key: _keyHostMode, value: _hostMode.storageValue);
-    await _storage.write(
-      key: _keyCustomHost,
-      value: _customHostController.text.trim(),
-    );
-    await _storage.write(
-      key: _keyProjectId,
-      value: _projectIdController.text.trim(),
-    );
-    await _storage.write(
-      key: _keyApiKey,
-      value: _apiKeyController.text.trim(),
-    );
-    await _storage.write(key: _keyHost, value: _normalizeHost(_effectiveHost));
-    await _storage.write(
-      key: _keyVisibleColumns,
-      value: jsonEncode(_visibleColumnKeys),
-    );
-  }
-
-  void _setStatus(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-
-  String _normalizeHost(String input) {
-    var trimmed = input.trim();
-    if (trimmed.isEmpty) return '';
-    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-      trimmed = 'https://$trimmed';
-    }
-    return trimmed.replaceAll(RegExp(r'/+$'), '');
-  }
-
-  String get _effectiveHost {
-    switch (_hostMode) {
-      case HostMode.us:
-        return 'https://us.posthog.com';
-      case HostMode.eu:
-        return 'https://eu.posthog.com';
-      case HostMode.custom:
-        return _customHostController.text;
-    }
-  }
-
-  Future<void> _fetchEvents() async {
-    final host = _normalizeHost(_effectiveHost);
-    final projectId = _projectIdController.text.trim();
-    final apiKey = _apiKeyController.text.trim();
-
-    if (host.isEmpty || projectId.isEmpty || apiKey.isEmpty) {
-      _setStatus('Please fill host, project ID, and API key.');
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final events = await _client.fetchEvents(
+    if (host.isNotEmpty && projectId.isNotEmpty && apiKey.isNotEmpty) {
+      await eventsState.fetchEvents(
         host: host,
         projectId: projectId,
         apiKey: apiKey,
       );
-
-      if (!mounted) return;
-
-      setState(() {
-        _events
-          ..clear()
-          ..addAll(events);
-      });
-
-      _setStatus('Fetched ${_events.length} events.');
-    } catch (error) {
-      _setStatus('Failed to fetch events: $error');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Column(
-        children: [
-          const TabBar(
-            isScrollable: true,
-            indicatorColor: Color(0xFFF15A24),
-            labelColor: Color(0xFF1C1B19),
-            unselectedLabelColor: Color(0xFF6F6A63),
-            tabs: [
-              Tab(text: 'Events'),
-              Tab(text: 'Sessions'),
-              Tab(text: 'Live'),
-            ],
-          ),
-          Expanded(
-            child: TabBarView(
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                _buildEventsTab(),
-                _buildPlaceholder('Sessions view coming soon.'),
-                _buildPlaceholder('Live view coming soon.'),
-              ],
-            ),
-          ),
-        ],
-      ),
+  Future<void> _reload() async {
+    final storage = _storage!;
+    final eventsState = _eventsState!;
+
+    final host = await storage.read(StorageService.keyHost) ?? '';
+    final projectId = await storage.read(StorageService.keyProjectId) ?? '';
+    final apiKey = await storage.read(StorageService.keyApiKey) ?? '';
+
+    if (host.isEmpty || projectId.isEmpty || apiKey.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please configure credentials in Settings.')),
+        );
+      }
+      return;
+    }
+
+    await eventsState.fetchEvents(
+      host: host,
+      projectId: projectId,
+      apiKey: apiKey,
     );
+
+    if (mounted && eventsState.error.value == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Fetched ${eventsState.events.value.length} events.'),
+        ),
+      );
+    } else if (mounted && eventsState.error.value != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to fetch events: ${eventsState.error.value}'),
+        ),
+      );
+    }
   }
 
-  Widget _buildEventsTab() {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.schedule, color: Color(0xFF1C1B19)),
-            const SizedBox(width: 8),
-            const Text(
-              'Activity',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-            ),
-            const Spacer(),
-            Chip(
-              label: const Text('PostHog default view'),
-              avatar: const Icon(Icons.tune, size: 16),
-              backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: const BorderSide(color: Color(0xFFE3DED6)),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Explore your events or see real-time events from your app or website.',
-          style: TextStyle(color: Color(0xFF6F6A63)),
-        ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _filterChip('Last hour'),
-            _filterChip('Select an event'),
-            _filterChip('Filter', icon: Icons.add),
-            _filterChip('Filter out internal and test users', isToggle: true),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            ElevatedButton.icon(
-              onPressed: _isLoading ? null : _fetchEvents,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reload'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF1C1B19),
-                elevation: 0,
-                side: const BorderSide(color: Color(0xFFE3DED6)),
-              ),
-            ),
-            const Spacer(),
-            _headerButton(
-              'Configure columns',
-              Icons.view_column_outlined,
-              onPressed: _openConfigureColumns,
-            ),
-            const SizedBox(width: 8),
-            _headerButton('Export', Icons.file_download_outlined),
-            const SizedBox(width: 8),
-            _headerButton('Open as new insight', Icons.open_in_new),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _buildEventsTable(),
-      ],
-    );
-  }
+  void _openConfigureColumns() async {
+    final storage = _storage!;
+    final eventsState = _eventsState!;
 
-  void _openConfigureColumns() {
-    _loadAvailableColumns();
+    final host = await storage.read(StorageService.keyHost) ?? '';
+    final projectId = await storage.read(StorageService.keyProjectId) ?? '';
+    final apiKey = await storage.read(StorageService.keyApiKey) ?? '';
+
+    if (host.isNotEmpty && projectId.isNotEmpty && apiKey.isNotEmpty) {
+      eventsState.loadAvailableColumns(
+        host: host,
+        projectId: projectId,
+        apiKey: apiKey,
+      );
+    }
+
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (context) {
@@ -325,52 +122,60 @@ class _ActivityScreenState extends State<ActivityScreen>
             constraints: const BoxConstraints(maxWidth: 820),
             child: Padding(
               padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+              child: StatefulBuilder(
+                builder: (context, setDialogState) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Row(
+                        children: [
+                          const Text(
+                            'Configure columns',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.w600),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
                       const Text(
-                        'Configure columns',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                        'Visible columns (drag to reorder)',
+                        style: TextStyle(color: Color(0xFF6F6A63)),
                       ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Visible columns (drag to reorder)',
-                    style: TextStyle(color: Color(0xFF6F6A63)),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildVisibleColumnsList(),
-                  const SizedBox(height: 16),
-                  _buildAvailableColumnsSection(),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      OutlinedButton(
-                        onPressed: _resetColumns,
-                        child: const Text('Reset to defaults'),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Close'),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Save'),
+                      const SizedBox(height: 12),
+                      _buildVisibleColumnsList(eventsState, setDialogState),
+                      const SizedBox(height: 16),
+                      _buildAvailableColumnsSection(
+                          eventsState, setDialogState),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          OutlinedButton(
+                            onPressed: () {
+                              _resetColumns(eventsState, setDialogState);
+                            },
+                            child: const Text('Reset to defaults'),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Close'),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Save'),
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                ],
+                  );
+                },
               ),
             ),
           ),
@@ -379,58 +184,65 @@ class _ActivityScreenState extends State<ActivityScreen>
     );
   }
 
-  Widget _buildVisibleColumnsList() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE3DED6)),
-      ),
-      child: ReorderableListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: _visibleColumnKeys.length,
-        onReorder: (oldIndex, newIndex) {
-          setState(() {
-            if (newIndex > oldIndex) {
-              newIndex -= 1;
-            }
-            final item = _visibleColumnKeys.removeAt(oldIndex);
-            _visibleColumnKeys.insert(newIndex, item);
-          });
-          _persistSettings();
-        },
-        itemBuilder: (context, index) {
-          final column = _columnForKey(_visibleColumnKeys[index]);
-          return ListTile(
-            key: ValueKey(column.key),
-            leading: const Icon(Icons.drag_indicator),
-            title: Text(column.label),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  onPressed: () {},
+  Widget _buildVisibleColumnsList(
+      EventsState eventsState, StateSetter setDialogState) {
+    return SignalBuilder(
+      builder: (context, _) {
+        final keys = eventsState.visibleColumnKeys.value;
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE3DED6)),
+          ),
+          child: ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: keys.length,
+            onReorder: (oldIndex, newIndex) {
+              final updated = List<String>.from(keys);
+              if (newIndex > oldIndex) newIndex -= 1;
+              final item = updated.removeAt(oldIndex);
+              updated.insert(newIndex, item);
+              eventsState.visibleColumnKeys.value = updated;
+              eventsState.saveVisibleColumns();
+            },
+            itemBuilder: (context, index) {
+              final column = eventsState.columnForKey(keys[index]);
+              return ListTile(
+                key: ValueKey(column.key),
+                leading: const Icon(Icons.drag_indicator),
+                title: Text(column.label),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      onPressed: () {},
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close,
+                          size: 18, color: Color(0xFFF15A24)),
+                      onPressed: () {
+                        final updated = List<String>.from(
+                            eventsState.visibleColumnKeys.value);
+                        updated.remove(column.key);
+                        eventsState.visibleColumnKeys.value = updated;
+                        eventsState.saveVisibleColumns();
+                      },
+                    ),
+                  ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 18, color: Color(0xFFF15A24)),
-                  onPressed: () {
-                    setState(() {
-                      _visibleColumnKeys.remove(column.key);
-                    });
-                    _persistSettings();
-                  },
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildAvailableColumnsSection() {
+  Widget _buildAvailableColumnsSection(
+      EventsState eventsState, StateSetter setDialogState) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -452,7 +264,7 @@ class _ActivityScreenState extends State<ActivityScreen>
                 isDense: true,
               ),
               onChanged: (value) {
-                setState(() {
+                setDialogState(() {
                   _columnSearch = value;
                 });
               },
@@ -465,51 +277,80 @@ class _ActivityScreenState extends State<ActivityScreen>
               children: [
                 SizedBox(
                   width: 180,
-                  child: ListView(
-                    padding: const EdgeInsets.all(12),
-                    children: [
-                      _categoryChip(
-                        'Event properties: ${_countForCategory(ColumnCategory.event)}',
-                        selected: _selectedCategory == ColumnCategory.event,
-                        onTap: () => _selectCategory(ColumnCategory.event),
-                      ),
-                      const SizedBox(height: 8),
-                      _categoryChip(
-                        'Feature flags: 0',
-                        selected: _selectedCategory == ColumnCategory.flags,
-                        onTap: () => _selectCategory(ColumnCategory.flags),
-                      ),
-                      const SizedBox(height: 8),
-                      _categoryChip(
-                        'Person properties: ${_countForCategory(ColumnCategory.person)}',
-                        selected: _selectedCategory == ColumnCategory.person,
-                        onTap: () => _selectCategory(ColumnCategory.person),
-                      ),
-                      const SizedBox(height: 8),
-                      _categoryChip(
-                        'Session properties: ${_countForCategory(ColumnCategory.session)}',
-                        selected: _selectedCategory == ColumnCategory.session,
-                        onTap: () => _selectCategory(ColumnCategory.session),
-                      ),
-                      const SizedBox(height: 8),
-                      _categoryChip('SQL expression'),
-                    ],
+                  child: SignalBuilder(
+                    builder: (context, _) {
+                      final available = eventsState.availableColumns.value;
+                      return ListView(
+                        padding: const EdgeInsets.all(12),
+                        children: [
+                          _categoryChip(
+                            'Event properties: ${_countForCategory(available, ColumnCategory.event)}',
+                            selected:
+                                _selectedCategory == ColumnCategory.event,
+                            onTap: () => setDialogState(() {
+                              _selectedCategory = ColumnCategory.event;
+                            }),
+                          ),
+                          const SizedBox(height: 8),
+                          _categoryChip(
+                            'Feature flags: 0',
+                            selected:
+                                _selectedCategory == ColumnCategory.flags,
+                            onTap: () => setDialogState(() {
+                              _selectedCategory = ColumnCategory.flags;
+                            }),
+                          ),
+                          const SizedBox(height: 8),
+                          _categoryChip(
+                            'Person properties: ${_countForCategory(available, ColumnCategory.person)}',
+                            selected:
+                                _selectedCategory == ColumnCategory.person,
+                            onTap: () => setDialogState(() {
+                              _selectedCategory = ColumnCategory.person;
+                            }),
+                          ),
+                          const SizedBox(height: 8),
+                          _categoryChip(
+                            'Session properties: ${_countForCategory(available, ColumnCategory.session)}',
+                            selected:
+                                _selectedCategory == ColumnCategory.session,
+                            onTap: () => setDialogState(() {
+                              _selectedCategory = ColumnCategory.session;
+                            }),
+                          ),
+                          const SizedBox(height: 8),
+                          _categoryChip('SQL expression'),
+                        ],
+                      );
+                    },
                   ),
                 ),
                 const VerticalDivider(width: 1, color: Color(0xFFE3DED6)),
                 Expanded(
-                  child: _isLoadingColumns
-                      ? const Center(child: CircularProgressIndicator())
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(12),
-                          itemBuilder: (context, index) {
-                            final column = _filteredAvailableColumns[index];
-                            return _availableColumnRow(column);
-                          },
-                          separatorBuilder: (_, __) =>
-                              const Divider(height: 1, color: Color(0xFFE3DED6)),
-                          itemCount: _filteredAvailableColumns.length,
-                        ),
+                  child: SignalBuilder(
+                    builder: (context, _) {
+                      final isLoadingCols =
+                          eventsState.isLoadingColumns.value;
+                      final available = eventsState.availableColumns.value;
+                      final filtered = _filteredAvailableColumns(available);
+
+                      if (isLoadingCols) {
+                        return const Center(
+                            child: CircularProgressIndicator());
+                      }
+                      return ListView.separated(
+                        padding: const EdgeInsets.all(12),
+                        itemBuilder: (context, index) {
+                          final column = filtered[index];
+                          return _availableColumnRow(
+                              column, eventsState);
+                        },
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 1, color: Color(0xFFE3DED6)),
+                        itemCount: filtered.length,
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
@@ -536,14 +377,15 @@ class _ActivityScreenState extends State<ActivityScreen>
         child: Text(
           text,
           style: TextStyle(
-            color: selected ? const Color(0xFFF15A24) : const Color(0xFF1C1B19),
+            color:
+                selected ? const Color(0xFFF15A24) : const Color(0xFF1C1B19),
           ),
         ),
       ),
     );
   }
 
-  Widget _availableColumnRow(ColumnOption column) {
+  Widget _availableColumnRow(ColumnOption column, EventsState eventsState) {
     return ListTile(
       dense: true,
       leading: const Icon(Icons.ssid_chart, size: 18),
@@ -551,168 +393,31 @@ class _ActivityScreenState extends State<ActivityScreen>
       trailing: IconButton(
         icon: const Icon(Icons.add_circle_outline),
         onPressed: () {
-          if (_visibleColumnKeys.contains(column.key)) return;
-          setState(() {
-            _visibleColumnKeys.add(column.key);
-          });
-          _persistSettings();
+          final current = eventsState.visibleColumnKeys.value;
+          if (current.contains(column.key)) return;
+          eventsState.visibleColumnKeys.value = [...current, column.key];
+          eventsState.saveVisibleColumns();
         },
       ),
     );
   }
 
-  void _resetColumns() {
-    setState(() {
-      _visibleColumnKeys
-        ..clear()
-        ..addAll(_defaultVisibleKeys());
-    });
-    _persistSettings();
+  void _resetColumns(EventsState eventsState, StateSetter setDialogState) {
+    eventsState.visibleColumnKeys.value = _defaultVisibleKeys();
+    eventsState.saveVisibleColumns();
   }
 
-  List<ColumnOption> get _filteredAvailableColumns {
+  List<ColumnOption> _filteredAvailableColumns(List<ColumnOption> available) {
     final search = _columnSearch.trim().toLowerCase();
-    return _availableColumns.where((column) {
+    return available.where((column) {
       if (column.category != _selectedCategory) return false;
       if (search.isEmpty) return true;
       return column.label.toLowerCase().contains(search);
     }).toList();
   }
 
-  int _countForCategory(ColumnCategory category) {
-    return _availableColumns.where((c) => c.category == category).length;
-  }
-
-  void _selectCategory(ColumnCategory category) {
-    setState(() {
-      _selectedCategory = category;
-    });
-  }
-
-  Future<void> _loadAvailableColumns() async {
-    if (_isLoadingColumns) return;
-
-    final host = _normalizeHost(_effectiveHost);
-    final projectId = _projectIdController.text.trim();
-    final apiKey = _apiKeyController.text.trim();
-
-    if (host.isEmpty || projectId.isEmpty || apiKey.isEmpty) {
-      return;
-    }
-
-    setState(() {
-      _isLoadingColumns = true;
-    });
-
-    try {
-      final eventProps = await _client.fetchPropertyDefinitions(
-        host: host,
-        projectId: projectId,
-        apiKey: apiKey,
-        type: 'event',
-      );
-      final personProps = await _client.fetchPropertyDefinitions(
-        host: host,
-        projectId: projectId,
-        apiKey: apiKey,
-        type: 'person',
-      );
-      final sessionProps = await _client.fetchPropertyDefinitions(
-        host: host,
-        projectId: projectId,
-        apiKey: apiKey,
-        type: 'session',
-      );
-
-      final options = <ColumnOption>[
-        ...eventProps.map(
-          (name) => ColumnOption.property(
-            category: ColumnCategory.event,
-            propertyKey: name,
-          ),
-        ),
-        ...personProps.map(
-          (name) => ColumnOption.property(
-            category: ColumnCategory.person,
-            propertyKey: name,
-          ),
-        ),
-        ...sessionProps.map(
-          (name) => ColumnOption.property(
-            category: ColumnCategory.session,
-            propertyKey: name,
-          ),
-        ),
-      ];
-
-      setState(() {
-        _availableColumns
-          ..clear()
-          ..addAll(options);
-        _refreshRegistry();
-      });
-    } catch (_) {
-      // ignore errors; UI will show empty list
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingColumns = false;
-        });
-      }
-    }
-  }
-
-  void _registerBuiltinColumns() {
-    final defaults = [
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.event,
-        label: 'Event',
-        flex: 2,
-      ),
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.person,
-        label: 'Person',
-        flex: 2,
-      ),
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.url,
-        label: 'URL / Screen',
-        flex: 3,
-      ),
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.library,
-        label: 'Library',
-        flex: 1,
-      ),
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.time,
-        label: 'Time',
-        flex: 1,
-      ),
-    ];
-
-    for (final spec in defaults) {
-      _columnRegistry[spec.key] = spec;
-    }
-
-    if (_visibleColumnKeys.isEmpty) {
-      _visibleColumnKeys.addAll(_defaultVisibleKeys());
-    }
-  }
-
-  void _refreshRegistry() {
-    for (final option in _availableColumns) {
-      final spec = ColumnSpec.property(
-        propertyKey: option.propertyKey,
-        label: option.label,
-        category: option.category,
-      );
-      _columnRegistry[spec.key] = spec;
-    }
-
-    if (_visibleColumnKeys.isEmpty) {
-      _visibleColumnKeys.addAll(_defaultVisibleKeys());
-    }
+  int _countForCategory(List<ColumnOption> available, ColumnCategory category) {
+    return available.where((c) => c.category == category).length;
   }
 
   List<String> _defaultVisibleKeys() {
@@ -745,26 +450,120 @@ class _ActivityScreenState extends State<ActivityScreen>
     ];
   }
 
-  void _restoreVisibleColumns(String? raw) {
-    if (raw == null || raw.isEmpty) {
-      if (_visibleColumnKeys.isEmpty) {
-        _visibleColumnKeys.addAll(_defaultVisibleKeys());
-      }
-      return;
+  @override
+  Widget build(BuildContext context) {
+    final eventsState = _eventsState;
+    if (eventsState == null) {
+      return const Center(child: CircularProgressIndicator());
     }
 
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is List) {
-        _visibleColumnKeys
-          ..clear()
-          ..addAll(decoded.map((e) => e.toString()));
-      }
-    } catch (_) {}
+    return DefaultTabController(
+      length: 3,
+      child: Column(
+        children: [
+          const TabBar(
+            isScrollable: true,
+            indicatorColor: Color(0xFFF15A24),
+            labelColor: Color(0xFF1C1B19),
+            unselectedLabelColor: Color(0xFF6F6A63),
+            tabs: [
+              Tab(text: 'Events'),
+              Tab(text: 'Sessions'),
+              Tab(text: 'Live'),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                _buildEventsTab(eventsState),
+                _buildPlaceholder('Sessions view coming soon.'),
+                _buildPlaceholder('Live view coming soon.'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-    if (_visibleColumnKeys.isEmpty) {
-      _visibleColumnKeys.addAll(_defaultVisibleKeys());
-    }
+  Widget _buildEventsTab(EventsState eventsState) {
+    return SignalBuilder(
+      builder: (context, _) {
+        final isLoading = eventsState.isLoading.value;
+
+        return ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.schedule, color: Color(0xFF1C1B19)),
+                const SizedBox(width: 8),
+                const Text(
+                  'Activity',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                ),
+                const Spacer(),
+                Chip(
+                  label: const Text('PostHog default view'),
+                  avatar: const Icon(Icons.tune, size: 16),
+                  backgroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: const BorderSide(color: Color(0xFFE3DED6)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Explore your events or see real-time events from your app or website.',
+              style: TextStyle(color: Color(0xFF6F6A63)),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _filterChip('Last hour'),
+                _filterChip('Select an event'),
+                _filterChip('Filter', icon: Icons.add),
+                _filterChip('Filter out internal and test users',
+                    isToggle: true),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: isLoading ? null : _reload,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reload'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF1C1B19),
+                    elevation: 0,
+                    side: const BorderSide(color: Color(0xFFE3DED6)),
+                  ),
+                ),
+                const Spacer(),
+                _headerButton(
+                  'Configure columns',
+                  Icons.view_column_outlined,
+                  onPressed: _openConfigureColumns,
+                ),
+                const SizedBox(width: 8),
+                _headerButton('Export', Icons.file_download_outlined),
+                const SizedBox(width: 8),
+                _headerButton('Open as new insight', Icons.open_in_new),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildEventsTable(eventsState),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildPlaceholder(String text) {
@@ -804,56 +603,65 @@ class _ActivityScreenState extends State<ActivityScreen>
     );
   }
 
-  Widget _buildEventsTable() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = _visibleColumnKeys.map(_columnForKey).toList();
-        final tableMinWidth = _calculateTableMinWidth(columns);
-        final tableWidth = constraints.maxWidth < tableMinWidth
-            ? tableMinWidth
-            : constraints.maxWidth;
-        final columnWidths = _calculateColumnWidths(columns, tableWidth - 32);
+  Widget _buildEventsTable(EventsState eventsState) {
+    return SignalBuilder(
+      builder: (context, _) {
+        final isLoading = eventsState.isLoading.value;
+        final events = eventsState.events.value;
+        final visibleKeys = eventsState.visibleColumnKeys.value;
+        final columns = visibleKeys.map(eventsState.columnForKey).toList();
 
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(
-            width: tableWidth,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE3DED6)),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final tableMinWidth = _calculateTableMinWidth(columns);
+            final tableWidth = constraints.maxWidth < tableMinWidth
+                ? tableMinWidth
+                : constraints.maxWidth;
+            final columnWidths =
+                _calculateColumnWidths(columns, tableWidth - 32);
+
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: tableWidth,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE3DED6)),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildTableHeader(columns, columnWidths),
+                      const Divider(height: 1, color: Color(0xFFE3DED6)),
+                      if (isLoading && events.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else if (events.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text('No events loaded yet.'),
+                        )
+                      else
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: events.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1, color: Color(0xFFE3DED6)),
+                          itemBuilder: (context, index) {
+                            final event = events[index];
+                            return _buildEventRow(event, columns, columnWidths);
+                          },
+                        ),
+                    ],
+                  ),
+                ),
               ),
-              child: Column(
-                children: [
-                  _buildTableHeader(columns, columnWidths),
-                  const Divider(height: 1, color: Color(0xFFE3DED6)),
-                  if (_isLoading && _events.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else if (_events.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('No events loaded yet.'),
-                    )
-                  else
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _events.length,
-                      separatorBuilder: (_, __) =>
-                          const Divider(height: 1, color: Color(0xFFE3DED6)),
-                      itemBuilder: (context, index) {
-                        final event = _events[index];
-                        return _buildEventRow(event, columns, columnWidths);
-                      },
-                    ),
-                ],
-              ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -871,7 +679,8 @@ class _ActivityScreenState extends State<ActivityScreen>
   ) {
     final totalFlex = columns.fold<int>(0, (sum, col) => sum + col.flex);
     if (totalFlex == 0) {
-      return List<double>.filled(columns.length, availableWidth / columns.length);
+      return List<double>.filled(
+          columns.length, availableWidth / columns.length);
     }
     return columns
         .map((col) => availableWidth * (col.flex / totalFlex))
@@ -1066,9 +875,5 @@ class _ActivityScreenState extends State<ActivityScreen>
   String _truncateValue(String value, {int maxLength = 120}) {
     if (value.length <= maxLength) return value;
     return '${value.substring(0, maxLength - 1)}…';
-  }
-
-  ColumnSpec _columnForKey(String key) {
-    return _columnRegistry[key] ?? ColumnSpec.fallback(key);
   }
 }
