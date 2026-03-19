@@ -210,7 +210,20 @@ class _DailyVisitorsChart extends StatelessWidget {
   }
 }
 
-// -- Referrer Horizontal Bar Chart --
+// -- Referrer Pie Chart --
+
+const _pieColors = [
+  Color(0xFF4C6EF5), // blue
+  Color(0xFF12B886), // teal
+  Color(0xFFF59F00), // yellow
+  Color(0xFFFA5252), // red
+  Color(0xFF7950F2), // violet
+  Color(0xFFFF922B), // orange
+  Color(0xFF20C997), // cyan
+  Color(0xFFE64980), // pink
+  Color(0xFF5C7CFA), // indigo
+  Color(0xFF82C91E), // lime
+];
 
 class _ReferrerBarChart extends StatelessWidget {
   final List<List<dynamic>> data;
@@ -219,8 +232,21 @@ class _ReferrerBarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxVal = data.isNotEmpty && data.first.length > 1
-        ? (data.first[1] as num?)?.toDouble() ?? 1 : 1.0;
+    final total = data.fold<double>(0, (sum, row) => sum + ((row.length > 1 ? row[1] as num? : 0)?.toDouble() ?? 0));
+
+    final sections = data.asMap().entries.map((entry) {
+      final row = entry.value;
+      final val = row.length > 1 ? (row[1] as num?)?.toDouble() ?? 0 : 0.0;
+      final color = _pieColors[entry.key % _pieColors.length];
+      return PieChartSectionData(
+        value: val,
+        color: color,
+        radius: 48,
+        title: total > 0 ? '${(val / total * 100).toStringAsFixed(0)}%' : '',
+        titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+        titlePositionPercentageOffset: 0.55,
+      );
+    }).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,75 +270,70 @@ class _ReferrerBarChart extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
-              children: data.asMap().entries.map((entry) {
-                final row = entry.value;
-                final name = row.isNotEmpty ? row[0]?.toString() ?? '' : '';
-                final val = row.length > 1 ? (row[1] as num?)?.toDouble() ?? 0 : 0.0;
-                final fraction = maxVal > 0 ? val / maxVal : 0.0;
-                final color = _barColor(entry.key);
+              children: [
+                // Pie chart
+                SizedBox(
+                  height: 180,
+                  child: PieChart(PieChartData(
+                    sections: sections,
+                    centerSpaceRadius: 32,
+                    sectionsSpace: 2,
+                    borderData: FlBorderData(show: false),
+                  )),
+                ),
+                const SizedBox(height: 16),
+                // Legend
+                ...data.asMap().entries.map((entry) {
+                  final row = entry.value;
+                  final name = row.isNotEmpty ? row[0]?.toString() ?? '' : '';
+                  final val = row.length > 1 ? (row[1] as num?)?.toInt() ?? 0 : 0;
+                  final pct = total > 0 ? (val / total * 100).toStringAsFixed(1) : '0';
+                  final color = _pieColors[entry.key % _pieColors.length];
 
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              name.isEmpty ? '(direct / none)' : name,
-                              style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Text(
-                            _fmtNum(val.toInt()),
-                            style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: color),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
-                        child: LinearProgressIndicator(
-                          value: fraction,
-                          minHeight: 8,
-                          backgroundColor: color.withValues(alpha: 0.08),
-                          valueColor: AlwaysStoppedAnimation(color),
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            name.isEmpty ? '(direct / none)' : name,
+                            style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Text(
+                          '$pct%',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 48,
+                          child: Text(
+                            _fmtNum(val),
+                            style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: color),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
             ),
           ),
         ),
       ],
     );
-  }
-
-  Color _barColor(int index) {
-    const colors = [
-      Color(0xFF4C6EF5), // blue
-      Color(0xFF12B886), // teal
-      Color(0xFFF59F00), // yellow
-      Color(0xFFFA5252), // red
-      Color(0xFF7950F2), // violet
-      Color(0xFFFF922B), // orange
-      Color(0xFF20C997), // cyan
-      Color(0xFFE64980), // pink
-      Color(0xFF5C7CFA), // indigo
-      Color(0xFF82C91E), // lime
-    ];
-    return colors[index % colors.length];
   }
 
   String _fmtNum(int n) {
