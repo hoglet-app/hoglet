@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../screens/activity/activity_screen.dart';
+import '../screens/alerts/alert_detail_screen.dart';
+import '../screens/alerts/alerts_list_screen.dart';
 import '../screens/cohorts/cohort_detail_screen.dart';
 import '../screens/cohorts/cohorts_list_screen.dart';
+import '../screens/error_tracking/error_detail_screen.dart';
+import '../screens/error_tracking/error_list_screen.dart';
 import '../screens/experiments/experiment_detail_screen.dart';
 import '../screens/experiments/experiments_list_screen.dart';
 import '../screens/insights/insights_list_screen.dart';
@@ -181,6 +185,32 @@ final appRouter = GoRouter(
           path: RoutePaths.surveyDetail,
           name: RouteNames.surveyDetail,
           builder: (context, state) => SurveyDetailScreen(surveyId: state.pathParameters['surveyId']!),
+        ),
+      ],
+    ),
+    GoRoute(
+      path: RoutePaths.errorTracking,
+      name: RouteNames.errorTracking,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const ErrorListScreen(),
+      routes: [
+        GoRoute(
+          path: RoutePaths.errorDetail,
+          name: RouteNames.errorDetail,
+          builder: (context, state) => ErrorDetailScreen(errorId: state.pathParameters['errorId']!),
+        ),
+      ],
+    ),
+    GoRoute(
+      path: RoutePaths.alerts,
+      name: RouteNames.alerts,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const AlertsListScreen(),
+      routes: [
+        GoRoute(
+          path: RoutePaths.alertDetail,
+          name: RouteNames.alertDetail,
+          builder: (context, state) => AlertDetailScreen(alertId: state.pathParameters['alertId']!),
         ),
       ],
     ),

@@ -70,12 +70,12 @@ class AppDrawer extends StatelessWidget {
           _DrawerItem(
             icon: Icons.bug_report,
             label: 'Error Tracking',
-            onTap: () => _showComingSoon(context, 'Error Tracking'),
+            onTap: () => _navigateToRoute(context, '/error-tracking'),
           ),
           _DrawerItem(
             icon: Icons.notifications,
             label: 'Alerts',
-            onTap: () => _showComingSoon(context, 'Alerts'),
+            onTap: () => _navigateToRoute(context, '/alerts'),
           ),
           _DrawerItem(
             icon: Icons.local_fire_department,

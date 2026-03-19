@@ -3,8 +3,10 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/alert.dart';
 import '../models/cohort.dart';
 import '../models/dashboard.dart';
+import '../models/error_group.dart';
 import '../models/event_item.dart';
 import '../models/experiment.dart';
 import '../models/feature_flag.dart';
@@ -364,6 +366,37 @@ class PosthogClient {
   Future<Survey> fetchSurvey(String host, String projectId, String apiKey, int id) async {
     final data = await _get(host, '/api/environments/$projectId/surveys/$id/', apiKey);
     return Survey.fromJson(data as Map<String, dynamic>);
+  }
+
+  // -- Error Tracking --
+
+  Future<List<ErrorGroup>> fetchErrorGroups(String host, String projectId, String apiKey) async {
+    final data = await _get(host, '/api/environments/$projectId/error_tracking/groups/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => ErrorGroup.fromJson(j)).toList();
+  }
+
+  Future<ErrorGroup> fetchErrorGroup(String host, String projectId, String apiKey, String errorId) async {
+    final data = await _get(host, '/api/environments/$projectId/error_tracking/groups/$errorId/', apiKey);
+    return ErrorGroup.fromJson(data as Map<String, dynamic>);
+  }
+
+  // -- Alerts --
+
+  Future<List<AlertItem>> fetchAlerts(String host, String projectId, String apiKey) async {
+    final data = await _get(host, '/api/environments/$projectId/alerts/', apiKey);
+    final results = data['results'] as List? ?? data as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => AlertItem.fromJson(j)).toList();
+  }
+
+  Future<AlertItem> fetchAlert(String host, String projectId, String apiKey, int id) async {
+    final data = await _get(host, '/api/environments/$projectId/alerts/$id/', apiKey);
+    return AlertItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<AlertItem> dismissAlert(String host, String projectId, String apiKey, int id) async {
+    final data = await _patch(host, '/api/environments/$projectId/alerts/$id/', apiKey, {'state': 'snoozed'});
+    return AlertItem.fromJson(data as Map<String, dynamic>);
   }
 
   void dispose() {

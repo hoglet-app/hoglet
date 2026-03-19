@@ -5,8 +5,10 @@ import 'di/providers.dart';
 import 'routing/app_router.dart';
 import 'services/posthog_client.dart';
 import 'services/storage_service.dart';
+import 'state/alerts_state.dart';
 import 'state/cohorts_state.dart';
 import 'state/dashboard_state.dart';
+import 'state/error_tracking_state.dart';
 import 'state/events_state.dart';
 import 'state/experiments_state.dart';
 import 'state/flags_state.dart';
@@ -32,6 +34,8 @@ class _HogletAppState extends State<HogletApp> {
   late final CohortsState _cohortsState;
   late final ExperimentsState _experimentsState;
   late final SurveysState _surveysState;
+  late final ErrorTrackingState _errorTrackingState;
+  late final AlertsState _alertsState;
 
   @override
   void initState() {
@@ -46,6 +50,8 @@ class _HogletAppState extends State<HogletApp> {
     _cohortsState = CohortsState();
     _experimentsState = ExperimentsState();
     _surveysState = SurveysState();
+    _errorTrackingState = ErrorTrackingState();
+    _alertsState = AlertsState();
   }
 
   @override
@@ -58,6 +64,8 @@ class _HogletAppState extends State<HogletApp> {
     _cohortsState.dispose();
     _experimentsState.dispose();
     _surveysState.dispose();
+    _errorTrackingState.dispose();
+    _alertsState.dispose();
     _client.dispose();
     super.dispose();
   }
@@ -75,6 +83,8 @@ class _HogletAppState extends State<HogletApp> {
       cohortsState: _cohortsState,
       experimentsState: _experimentsState,
       surveysState: _surveysState,
+      errorTrackingState: _errorTrackingState,
+      alertsState: _alertsState,
       child: MaterialApp.router(
         title: 'Hoglet',
         debugShowCheckedModeBanner: false,

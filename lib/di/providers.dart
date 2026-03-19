@@ -2,8 +2,10 @@ import 'package:flutter/widgets.dart';
 
 import '../services/posthog_client.dart';
 import '../services/storage_service.dart';
+import '../state/alerts_state.dart';
 import '../state/cohorts_state.dart';
 import '../state/dashboard_state.dart';
+import '../state/error_tracking_state.dart';
 import '../state/events_state.dart';
 import '../state/experiments_state.dart';
 import '../state/flags_state.dart';
@@ -22,6 +24,8 @@ class AppProviders extends InheritedWidget {
   final CohortsState cohortsState;
   final ExperimentsState experimentsState;
   final SurveysState surveysState;
+  final ErrorTrackingState errorTrackingState;
+  final AlertsState alertsState;
 
   const AppProviders({
     super.key,
@@ -35,6 +39,8 @@ class AppProviders extends InheritedWidget {
     required this.cohortsState,
     required this.experimentsState,
     required this.surveysState,
+    required this.errorTrackingState,
+    required this.alertsState,
     required super.child,
   });
 
