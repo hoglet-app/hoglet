@@ -256,7 +256,7 @@ class _FunnelsChart extends StatelessWidget {
             ? const FlGridData(show: false)
             : const FlGridData(),
         borderData: FlBorderData(show: !compact),
-        barTouchData: const BarTouchData(enabled: false),
+        barTouchData: BarTouchData(enabled: false),
         maxY: 100,
       ),
     );
