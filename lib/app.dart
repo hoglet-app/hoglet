@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'di/providers.dart';
 import 'routing/app_router.dart';
+import 'services/posthog_client.dart';
+import 'services/storage_service.dart';
 
 class HogletApp extends StatefulWidget {
   const HogletApp({super.key});
@@ -14,6 +16,16 @@ class HogletApp extends StatefulWidget {
 
 class _HogletAppState extends State<HogletApp> {
   late final _router = createRouter(isAuthenticated: true);
+  final _client = PosthogClient();
+  final _storage = StorageService();
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize state providers with explicit service instances
+    // (disco providers in the same scope can't reference each other)
+    initStateProviders(client: _client, storage: _storage);
+  }
 
   @override
   Widget build(BuildContext context) {
