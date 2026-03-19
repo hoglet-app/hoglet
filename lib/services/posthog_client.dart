@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/dashboard.dart';
 import '../models/event_item.dart';
+import '../models/feature_flag.dart';
 import '../models/insight.dart';
 import 'posthog_api_error.dart';
 
@@ -261,5 +262,64 @@ class PosthogClient {
         ? decoded['results'] as List
         : decoded is List ? decoded : [];
     return results.map((d) => Insight.fromJson(d as Map<String, dynamic>)).toList();
+  }
+
+  Future<http.Response> _patch(Uri uri, String apiKey, Map<String, dynamic> body,
+      {Duration timeout = const Duration(seconds: 15)}) async {
+    try {
+      final response = await http.patch(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode(body),
+      ).timeout(timeout);
+      _checkResponse(response);
+      return response;
+    } on SocketException catch (e) {
+      throw NetworkError('No internet connection', cause: e);
+    } on TimeoutException {
+      throw NetworkError('Request timed out');
+    }
+  }
+
+  Future<List<FeatureFlag>> fetchFeatureFlags({
+    required String host,
+    required String projectId,
+    required String apiKey,
+  }) async {
+    final uri = Uri.parse('$host/api/environments/$projectId/feature_flags/');
+    final response = await _get(uri, apiKey);
+    final decoded = jsonDecode(response.body);
+    final results = decoded is Map && decoded['results'] is List
+        ? decoded['results'] as List
+        : decoded is List ? decoded : [];
+    return results.map((d) => FeatureFlag.fromJson(d as Map<String, dynamic>)).toList();
+  }
+
+  Future<FeatureFlag> fetchFeatureFlag({
+    required String host,
+    required String projectId,
+    required String apiKey,
+    required int flagId,
+  }) async {
+    final uri = Uri.parse('$host/api/environments/$projectId/feature_flags/$flagId/');
+    final response = await _get(uri, apiKey);
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    return FeatureFlag.fromJson(decoded);
+  }
+
+  Future<FeatureFlag> toggleFeatureFlag({
+    required String host,
+    required String projectId,
+    required String apiKey,
+    required int flagId,
+    required bool active,
+  }) async {
+    final uri = Uri.parse('$host/api/environments/$projectId/feature_flags/$flagId/');
+    final response = await _patch(uri, apiKey, {'active': active});
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    return FeatureFlag.fromJson(decoded);
   }
 }
