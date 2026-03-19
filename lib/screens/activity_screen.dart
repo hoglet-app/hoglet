@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_solidart/flutter_solidart.dart';
 
@@ -8,6 +6,7 @@ import '../models/column_spec.dart';
 import '../models/event_item.dart';
 import '../services/storage_service.dart';
 import '../state/events_state.dart';
+import '../widgets/error_view.dart';
 import '../widgets/loading_states.dart';
 
 class ActivityScreen extends StatefulWidget {
@@ -79,7 +78,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
     if (host.isEmpty || projectId.isEmpty || apiKey.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please configure credentials in Settings.')),
+          const SnackBar(
+            content: Text('Please configure credentials in Settings.'),
+          ),
         );
       }
       return;
@@ -100,7 +101,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
     } else if (mounted && eventsState.error.value != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to fetch events: ${eventsState.error.value}'),
+          content:
+              Text('Failed to fetch events: ${eventsState.error.value}'),
         ),
       );
     }
@@ -129,7 +131,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
       builder: (context) {
         return Dialog(
           backgroundColor: const Color(0xFFF5F4EF),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 820),
             child: Padding(
@@ -145,7 +148,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
                           const Text(
                             'Configure columns',
                             style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.w600),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           const Spacer(),
                           IconButton(
@@ -163,7 +168,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       _buildVisibleColumnsList(eventsState, setDialogState),
                       const SizedBox(height: 16),
                       _buildAvailableColumnsSection(
-                          eventsState, setDialogState),
+                        eventsState,
+                        setDialogState,
+                      ),
                       const SizedBox(height: 16),
                       Row(
                         children: [
@@ -200,7 +207,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   Widget _buildVisibleColumnsList(
-      EventsState eventsState, StateSetter setDialogState) {
+    EventsState eventsState,
+    StateSetter setDialogState,
+  ) {
     return SignalBuilder(
       builder: (context, _) {
         final keys = eventsState.visibleColumnKeys.value;
@@ -236,11 +245,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       onPressed: () {},
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close,
-                          size: 18, color: Color(0xFFF15A24)),
+                      icon: const Icon(
+                        Icons.close,
+                        size: 18,
+                        color: Color(0xFFF15A24),
+                      ),
                       onPressed: () {
                         final updated = List<String>.from(
-                            eventsState.visibleColumnKeys.value);
+                          eventsState.visibleColumnKeys.value,
+                        );
                         updated.remove(column.key);
                         eventsState.visibleColumnKeys.value = updated;
                         eventsState.saveVisibleColumns();
@@ -257,7 +270,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   Widget _buildAvailableColumnsSection(
-      EventsState eventsState, StateSetter setDialogState) {
+    EventsState eventsState,
+    StateSetter setDialogState,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -347,21 +362,24 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       final isLoadingCols =
                           eventsState.isLoadingColumns.value;
                       final available = eventsState.availableColumns.value;
-                      final filtered = _filteredAvailableColumns(available);
+                      final filtered =
+                          _filteredAvailableColumns(available);
 
                       if (isLoadingCols) {
                         return const Center(
-                            child: CircularProgressIndicator());
+                          child: CircularProgressIndicator(),
+                        );
                       }
                       return ListView.separated(
                         padding: const EdgeInsets.all(12),
                         itemBuilder: (context, index) {
                           final column = filtered[index];
-                          return _availableColumnRow(
-                              column, eventsState);
+                          return _availableColumnRow(column, eventsState);
                         },
-                        separatorBuilder: (_, __) =>
-                            const Divider(height: 1, color: Color(0xFFE3DED6)),
+                        separatorBuilder: (_, __) => const Divider(
+                          height: 1,
+                          color: Color(0xFFE3DED6),
+                        ),
                         itemCount: filtered.length,
                       );
                     },
@@ -392,8 +410,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
         child: Text(
           text,
           style: TextStyle(
-            color:
-                selected ? const Color(0xFFF15A24) : const Color(0xFF1C1B19),
+            color: selected
+                ? const Color(0xFFF15A24)
+                : const Color(0xFF1C1B19),
           ),
         ),
       ),
@@ -431,7 +450,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
     }).toList();
   }
 
-  int _countForCategory(List<ColumnOption> available, ColumnCategory category) {
+  int _countForCategory(
+    List<ColumnOption> available,
+    ColumnCategory category,
+  ) {
     return available.where((c) => c.category == category).length;
   }
 
@@ -465,6 +487,24 @@ class _ActivityScreenState extends State<ActivityScreen> {
     ];
   }
 
+  void _openEventDetail(EventItem event) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFFF5F4EF),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            child: Text(event.prettyDetails),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final eventsState = _eventsState;
@@ -480,423 +520,188 @@ class _ActivityScreenState extends State<ActivityScreen> {
       );
     }
 
-    return DefaultTabController(
-      length: 3,
-      child: Column(
-        children: [
-          const TabBar(
-            isScrollable: true,
-            indicatorColor: Color(0xFFF15A24),
-            labelColor: Color(0xFF1C1B19),
-            unselectedLabelColor: Color(0xFF6F6A63),
-            tabs: [
-              Tab(text: 'Events'),
-              Tab(text: 'Sessions'),
-              Tab(text: 'Live'),
-            ],
-          ),
-          Expanded(
-            child: TabBarView(
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                _buildEventsTab(eventsState),
-                _buildPlaceholder('Sessions view coming soon.'),
-                _buildPlaceholder('Live view coming soon.'),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEventsTab(EventsState eventsState) {
     return SignalBuilder(
       builder: (context, _) {
         final isLoading = eventsState.isLoading.value;
+        final events = eventsState.events.value;
+        final errorValue = eventsState.error.value;
 
-        return ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        // Error state with retry
+        if (errorValue != null && events.isEmpty) {
+          return ErrorView(error: errorValue, onRetry: _reload);
+        }
+
+        // Loading state — first load
+        if (isLoading && events.isEmpty) {
+          return const ShimmerList();
+        }
+
+        // Empty state — loaded but no events
+        if (!isLoading && events.isEmpty) {
+          return const EmptyState(
+            icon: Icons.event_busy_outlined,
+            title: 'No events yet',
+            subtitle: 'Pull down to refresh or check your configuration.',
+          );
+        }
+
+        return Stack(
           children: [
-            Row(
-              children: [
-                const Icon(Icons.schedule, color: Color(0xFF1C1B19)),
-                const SizedBox(width: 8),
-                const Text(
-                  'Activity',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-                ),
-                const Spacer(),
-                Chip(
-                  label: const Text('PostHog default view'),
-                  avatar: const Icon(Icons.tune, size: 16),
-                  backgroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: const BorderSide(color: Color(0xFFE3DED6)),
-                  ),
-                ),
-              ],
+            RefreshIndicator(
+              color: const Color(0xFFF15A24),
+              onRefresh: _reload,
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
+                itemCount: events.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  return _EventCard(
+                    event: events[index],
+                    onTap: () => _openEventDetail(events[index]),
+                  );
+                },
+              ),
             ),
-            const SizedBox(height: 6),
-            const Text(
-              'Explore your events or see real-time events from your app or website.',
-              style: TextStyle(color: Color(0xFF6F6A63)),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _filterChip('Last hour'),
-                _filterChip('Select an event'),
-                _filterChip('Filter', icon: Icons.add),
-                _filterChip('Filter out internal and test users',
-                    isToggle: true),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: isLoading ? null : _reload,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Reload'),
-                  style: ElevatedButton.styleFrom(
+            // Floating action area — bottom right
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FloatingActionButton.small(
+                    heroTag: 'configure',
                     backgroundColor: Colors.white,
                     foregroundColor: const Color(0xFF1C1B19),
-                    elevation: 0,
-                    side: const BorderSide(color: Color(0xFFE3DED6)),
+                    onPressed: _openConfigureColumns,
+                    child: const Icon(Icons.tune, size: 20),
                   ),
-                ),
-                const Spacer(),
-                _headerButton(
-                  'Configure columns',
-                  Icons.view_column_outlined,
-                  onPressed: _openConfigureColumns,
-                ),
-                const SizedBox(width: 8),
-                _headerButton('Export', Icons.file_download_outlined),
-                const SizedBox(width: 8),
-                _headerButton('Open as new insight', Icons.open_in_new),
-              ],
+                  const SizedBox(height: 8),
+                  FloatingActionButton(
+                    heroTag: 'reload',
+                    backgroundColor: const Color(0xFFF15A24),
+                    foregroundColor: Colors.white,
+                    onPressed: isLoading ? null : _reload,
+                    child: isLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.refresh),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            _buildEventsTable(eventsState),
           ],
         );
       },
     );
   }
+}
 
-  Widget _buildPlaceholder(String text) {
-    return Center(
-      child: Text(
-        text,
-        style: const TextStyle(color: Color(0xFF6F6A63)),
-      ),
-    );
-  }
+/// A single event card for the mobile activity list.
+class _EventCard extends StatelessWidget {
+  const _EventCard({
+    required this.event,
+    required this.onTap,
+  });
 
-  Widget _filterChip(String text, {IconData? icon, bool isToggle = false}) {
-    return Chip(
-      label: Text(text),
-      avatar: icon != null
-          ? Icon(icon, size: 16, color: const Color(0xFF1C1B19))
-          : null,
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: Color(0xFFE3DED6)),
-      ),
-      labelStyle: const TextStyle(color: Color(0xFF1C1B19)),
-    );
-  }
+  final EventItem event;
+  final VoidCallback onTap;
 
-  Widget _headerButton(String text, IconData icon, {VoidCallback? onPressed}) {
-    return OutlinedButton.icon(
-      onPressed: onPressed ?? () {},
-      icon: Icon(icon, size: 18),
-      label: Text(text),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: const Color(0xFF1C1B19),
-        side: const BorderSide(color: Color(0xFFE3DED6)),
-        backgroundColor: Colors.white,
-      ),
-    );
-  }
-
-  Widget _buildEventsTable(EventsState eventsState) {
-    return SignalBuilder(
-      builder: (context, _) {
-        final isLoading = eventsState.isLoading.value;
-        final events = eventsState.events.value;
-        final visibleKeys = eventsState.visibleColumnKeys.value;
-        final columns = visibleKeys.map(eventsState.columnForKey).toList();
-
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final tableMinWidth = _calculateTableMinWidth(columns);
-            final tableWidth = constraints.maxWidth < tableMinWidth
-                ? tableMinWidth
-                : constraints.maxWidth;
-            final columnWidths =
-                _calculateColumnWidths(columns, tableWidth - 32);
-
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: tableWidth,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE3DED6)),
-                  ),
-                  child: Column(
-                    children: [
-                      _buildTableHeader(columns, columnWidths),
-                      const Divider(height: 1, color: Color(0xFFE3DED6)),
-                      if (isLoading && events.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      else if (events.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Text('No events loaded yet.'),
-                        )
-                      else
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: events.length,
-                          separatorBuilder: (_, __) =>
-                              const Divider(height: 1, color: Color(0xFFE3DED6)),
-                          itemBuilder: (context, index) {
-                            final event = events[index];
-                            return _buildEventRow(event, columns, columnWidths);
-                          },
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  double _calculateTableMinWidth(List<ColumnSpec> columns) {
-    const baseWidth = 140.0;
-    final totalFlex = columns.fold<int>(0, (sum, col) => sum + col.flex);
-    return (totalFlex * baseWidth) + 32; // account for horizontal padding
-  }
-
-  List<double> _calculateColumnWidths(
-    List<ColumnSpec> columns,
-    double availableWidth,
-  ) {
-    final totalFlex = columns.fold<int>(0, (sum, col) => sum + col.flex);
-    if (totalFlex == 0) {
-      return List<double>.filled(
-          columns.length, availableWidth / columns.length);
-    }
-    return columns
-        .map((col) => availableWidth * (col.flex / totalFlex))
-        .toList();
-  }
-
-  Widget _buildTableHeader(
-    List<ColumnSpec> columns,
-    List<double> widths,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < columns.length; i++)
-            SizedBox(
-              width: widths[i],
-              child: Text(columns[i].label.toUpperCase()),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEventRow(
-    EventItem event,
-    List<ColumnSpec> columns,
-    List<double> widths,
-  ) {
-    return ListTile(
-      dense: true,
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < columns.length; i++)
-            SizedBox(
-              width: widths[i],
-              child: _buildColumnCellWithTooltip(columns[i], event),
-            ),
-        ],
-      ),
-      onTap: () {
-        showModalBottomSheet(
-          context: context,
-          backgroundColor: const Color(0xFFF5F4EF),
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          builder: (context) {
-            return Padding(
-              padding: const EdgeInsets.all(16),
-              child: SingleChildScrollView(
-                child: Text(event.prettyDetails),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildColumnCellWithTooltip(ColumnSpec column, EventItem event) {
-    final payload = _buildTooltipPayload(column, event);
-    final message = const JsonEncoder.withIndent('  ').convert(payload);
-
-    return Tooltip(
-      message: message,
-      waitDuration: const Duration(milliseconds: 200),
-      showDuration: const Duration(seconds: 4),
-      preferBelow: false,
-      child: _buildColumnCell(column, event),
-    );
-  }
-
-  Widget _buildColumnCell(ColumnSpec column, EventItem event) {
-    switch (column.kind) {
-      case ColumnKind.builtin:
-        final builtinId = column.id;
-        if (builtinId == null) {
-          return const Text('—');
-        }
-        switch (builtinId) {
-          case BuiltinColumnId.event:
-            return Text(event.eventName);
-          case BuiltinColumnId.person:
-            return Row(
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE3DED6)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Row 1: Event name + time
+            Row(
               children: [
-                CircleAvatar(
-                  radius: 12,
-                  backgroundColor: const Color(0xFFDAD1C3),
-                  child: Text(
-                    event.personInitial,
-                    style: const TextStyle(fontSize: 12),
-                  ),
+                const Icon(
+                  Icons.bolt,
+                  size: 16,
+                  color: Color(0xFFF15A24),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    event.distinctId,
+                    event.eventName,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1C1B19),
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                const SizedBox(width: 8),
+                Text(
+                  event.timeAgoLabel,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF6F6A63),
+                  ),
+                ),
               ],
-            );
-          case BuiltinColumnId.url:
-            return Text(
-              event.urlLabel,
-              overflow: TextOverflow.ellipsis,
-            );
-          case BuiltinColumnId.library:
-            return Text(event.libraryLabel);
-          case BuiltinColumnId.time:
-            return Text(event.timeAgoLabel);
-        }
-      case ColumnKind.property:
-        final key = column.propertyKey ?? '';
-        final value = event.properties[key] ??
-            (key.isNotEmpty && !key.startsWith(r'$')
-                ? event.properties['\$$key']
-                : null);
-        return Text(
-          value?.toString() ?? '—',
-          overflow: TextOverflow.ellipsis,
-        );
-    }
-  }
-
-  Map<String, dynamic> _buildTooltipPayload(ColumnSpec column, EventItem event) {
-    return {
-      'label': column.label,
-      'property_key': _columnPropertyKey(column),
-      'category': _columnCategoryLabel(column),
-      'value_preview': _truncateValue(_columnValuePreview(column, event)),
-    };
-  }
-
-  String _columnPropertyKey(ColumnSpec column) {
-    switch (column.kind) {
-      case ColumnKind.builtin:
-        switch (column.id) {
-          case BuiltinColumnId.event:
-            return 'event';
-          case BuiltinColumnId.person:
-            return 'distinct_id';
-          case BuiltinColumnId.url:
-            return r'$current_url';
-          case BuiltinColumnId.library:
-            return r'$lib';
-          case BuiltinColumnId.time:
-            return 'timestamp';
-          case null:
-            return column.label;
-        }
-      case ColumnKind.property:
-        return column.propertyKey ?? column.label;
-    }
-  }
-
-  String _columnCategoryLabel(ColumnSpec column) {
-    final category = column.category ?? ColumnCategory.event;
-    return category.name;
-  }
-
-  String _columnValuePreview(ColumnSpec column, EventItem event) {
-    switch (column.kind) {
-      case ColumnKind.builtin:
-        switch (column.id) {
-          case BuiltinColumnId.event:
-            return event.eventName;
-          case BuiltinColumnId.person:
-            return event.distinctId;
-          case BuiltinColumnId.url:
-            return event.urlLabel;
-          case BuiltinColumnId.library:
-            return event.libraryLabel;
-          case BuiltinColumnId.time:
-            return event.timeAgoLabel;
-          case null:
-            return '—';
-        }
-      case ColumnKind.property:
-        final key = column.propertyKey ?? '';
-        final value = event.properties[key] ??
-            (key.isNotEmpty && !key.startsWith(r'$')
-                ? event.properties['\$$key']
-                : null);
-        return value?.toString() ?? '—';
-    }
-  }
-
-  String _truncateValue(String value, {int maxLength = 120}) {
-    if (value.length <= maxLength) return value;
-    return '${value.substring(0, maxLength - 1)}…';
+            ),
+            const SizedBox(height: 6),
+            // Row 2: Person + library badge
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 10,
+                  backgroundColor: const Color(0xFFDAD1C3),
+                  child: Text(
+                    event.personInitial,
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF1C1B19)),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    event.distinctId,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF6F6A63),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F4EF),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFE3DED6)),
+                  ),
+                  child: Text(
+                    event.libraryLabel,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF6F6A63),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
