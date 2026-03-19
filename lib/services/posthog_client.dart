@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/dashboard.dart';
+import '../models/event_item.dart';
 import '../models/feature_flag.dart';
 import '../models/insight.dart';
 import 'posthog_api_error.dart';
@@ -238,6 +239,64 @@ class PosthogClient {
       {'active': active},
     );
     return FeatureFlag.fromJson(data as Map<String, dynamic>);
+  }
+
+  // -- Events (HogQL) --
+
+  Future<List<EventItem>> fetchEvents(
+    String host,
+    String projectId,
+    String apiKey, {
+    int limit = 100,
+  }) async {
+    final data = await _post(
+      host,
+      '/api/projects/$projectId/query/',
+      apiKey,
+      {
+        'query': {
+          'kind': 'HogQLQuery',
+          'query':
+              'SELECT uuid, event, distinct_id, timestamp, properties '
+              'FROM events ORDER BY timestamp DESC LIMIT $limit',
+        },
+      },
+    );
+
+    final results = <EventItem>[];
+    final rows = data['results'] as List? ?? [];
+    for (final row in rows) {
+      if (row is List) {
+        results.add(EventItem.fromHogQLRow(row));
+      }
+    }
+    return results;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchPropertyDefinitions(
+    String host,
+    String projectId,
+    String apiKey, {
+    String type = 'event', // event, person, session
+    int limit = 100,
+  }) async {
+    // Try multiple URL patterns for compatibility
+    final paths = [
+      '/api/projects/$projectId/property_definitions/?type=$type&limit=$limit',
+      '/api/environments/$projectId/property_definitions/?type=$type&limit=$limit',
+    ];
+
+    for (final path in paths) {
+      try {
+        final data = await _get(host, path, apiKey);
+        final results = data['results'] as List? ?? [];
+        return results.cast<Map<String, dynamic>>();
+      } catch (e) {
+        if (e is PosthogApiError && e.statusCode == 404) continue;
+        rethrow;
+      }
+    }
+    return [];
   }
 
   void dispose() {

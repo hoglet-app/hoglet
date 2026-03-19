@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../screens/activity/activity_screen.dart';
 import '../screens/flags/flag_detail_screen.dart';
 import '../screens/flags/flags_list_screen.dart';
 import '../screens/home/dashboard_detail_screen.dart';
@@ -66,8 +67,7 @@ final appRouter = GoRouter(
             GoRoute(
               path: RoutePaths.activity,
               name: RouteNames.activity,
-              builder: (context, state) =>
-                  const _PlaceholderScreen(title: 'Activity', icon: Icons.bolt),
+              builder: (context, state) => const ActivityScreen(),
             ),
           ],
         ),
@@ -107,40 +107,3 @@ final appRouter = GoRouter(
   ],
 );
 
-/// Temporary placeholder for tabs that will be implemented in later phases.
-class _PlaceholderScreen extends StatelessWidget {
-  final String title;
-  final IconData icon;
-
-  const _PlaceholderScreen({required this.title, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          onPressed: () => Scaffold.of(context).openDrawer(),
-        ),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 64, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 16),
-            Text(title, style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(
-              'Coming in a future phase',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
