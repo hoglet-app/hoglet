@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../di/providers.dart';
-import '../../models/host_mode.dart';
-import '../../services/storage_service.dart';
+import '../../routing/route_names.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -12,165 +12,124 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  StorageService? _storage;
-
-  final _customHostController = TextEditingController();
-  final _projectIdController = TextEditingController();
-  final _apiKeyController = TextEditingController();
-
-  HostMode _hostMode = HostMode.us;
-  bool _showApiKey = false;
-  bool _loaded = false;
-  bool _initialized = false;
+  String? _host;
+  String? _projectId;
+  bool _loading = true;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_initialized) {
-      _initialized = true;
-      _storage = AppProviders.of(context).storage;
-      _loadSettings();
-    }
-  }
-
-  @override
-  void dispose() {
-    _customHostController.dispose();
-    _projectIdController.dispose();
-    _apiKeyController.dispose();
-    super.dispose();
+    _loadSettings();
   }
 
   Future<void> _loadSettings() async {
-    final storage = _storage!;
-    final hostMode = await storage.read(StorageService.keyHostMode) ?? 'us';
-    final customHost = await storage.read(StorageService.keyCustomHost) ?? '';
-    final projectId = await storage.read(StorageService.keyProjectId) ?? '';
-    final apiKey = await storage.read(StorageService.keyApiKey) ?? '';
-
-    if (!mounted) return;
-    setState(() {
-      _hostMode = HostModeX.fromStorage(hostMode);
-      _customHostController.text = customHost;
-      _projectIdController.text = projectId;
-      _apiKeyController.text = apiKey;
-      _loaded = true;
-    });
-  }
-
-  Future<void> _saveSettings() async {
-    final storage = _storage!;
-    final host = _effectiveHost;
-    final projectId = _projectIdController.text.trim();
-    final apiKey = _apiKeyController.text.trim();
-
-    if (host.isEmpty || projectId.isEmpty || apiKey.isEmpty) {
-      _showSnackBar('Please fill host, project ID, and API key.');
-      return;
+    final storage = AppProviders.of(context).storage;
+    final credentials = await storage.readCredentials();
+    if (mounted) {
+      setState(() {
+        _host = credentials?.host;
+        _projectId = credentials?.projectId;
+        _loading = false;
+      });
     }
-
-    await storage.write(StorageService.keyHost, host);
-    await storage.write(StorageService.keyHostMode, _hostMode.storageValue);
-    await storage.write(StorageService.keyCustomHost, _customHostController.text.trim());
-    await storage.write(StorageService.keyProjectId, projectId);
-    await storage.write(StorageService.keyApiKey, apiKey);
-
-    if (!mounted) return;
-    _showSnackBar('Settings saved.');
   }
 
-  String get _effectiveHost {
-    if (_hostMode == HostMode.custom) {
-      var host = _customHostController.text.trim();
-      if (host.isNotEmpty && !host.startsWith('http://') && !host.startsWith('https://')) {
-        host = 'https://$host';
+  Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign Out'),
+        content: const Text('This will clear your connection settings. Continue?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await AppProviders.of(context).storage.clearCredentials();
+      if (mounted) {
+        context.goNamed(RouteNames.welcome);
       }
-      return host.replaceAll(RegExp(r'/+$'), '');
     }
-    return _hostMode.hostUrl;
-  }
-
-  void _showSnackBar(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_loaded) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    final theme = Theme.of(context);
 
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        const Text(
-          'Connection',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Settings'),
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          onPressed: () => Scaffold.of(context).openDrawer(),
         ),
-        const SizedBox(height: 16),
-        DropdownButtonFormField<HostMode>(
-          value: _hostMode,
-          decoration: const InputDecoration(labelText: 'Host Region'),
-          items: const [
-            DropdownMenuItem(value: HostMode.us, child: Text('US Cloud (us.posthog.com)')),
-            DropdownMenuItem(value: HostMode.eu, child: Text('EU Cloud (eu.posthog.com)')),
-            DropdownMenuItem(value: HostMode.custom, child: Text('Custom Domain')),
-          ],
-          onChanged: (value) {
-            if (value == null) return;
-            setState(() => _hostMode = value);
-          },
-        ),
-        if (_hostMode == HostMode.custom) ...[
-          const SizedBox(height: 12),
-          TextField(
-            controller: _customHostController,
-            decoration: const InputDecoration(
-              labelText: 'Custom Host',
-              hintText: 'https://your.posthog.domain',
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              children: [
+                _SectionHeader('CONNECTION'),
+                ListTile(
+                  leading: const Icon(Icons.cloud),
+                  title: const Text('Host'),
+                  subtitle: Text(_host ?? 'Not connected'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.folder),
+                  title: const Text('Project ID'),
+                  subtitle: Text(_projectId ?? 'Not set'),
+                ),
+                const Divider(),
+                _SectionHeader('ABOUT'),
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('Hoglet'),
+                  subtitle: const Text('v1.0.0 — PostHog Mobile Client'),
+                ),
+                const Divider(),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: OutlinedButton.icon(
+                    onPressed: _signOut,
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Sign Out'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: theme.colorScheme.error,
+                      side: BorderSide(color: theme.colorScheme.error),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-        const SizedBox(height: 12),
-        TextField(
-          controller: _projectIdController,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Project ID'),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _apiKeyController,
-          obscureText: !_showApiKey,
-          decoration: InputDecoration(
-            labelText: 'Personal API Key',
-            suffixIcon: IconButton(
-              icon: Icon(_showApiKey ? Icons.visibility_off : Icons.visibility),
-              onPressed: () => setState(() => _showApiKey = !_showApiKey),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+
+  const _SectionHeader(this.title);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              letterSpacing: 1.2,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
             ),
-          ),
-        ),
-        const SizedBox(height: 24),
-        ElevatedButton(
-          onPressed: _saveSettings,
-          child: const Text('Save Settings'),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Your personal API key is stored securely on this device.',
-          style: TextStyle(fontSize: 12, color: Colors.black54),
-        ),
-        const SizedBox(height: 32),
-        const Text(
-          'About',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Hoglet — PostHog Mobile Client\nVersion 1.0.0',
-          style: TextStyle(color: Color(0xFF6F6A63)),
-        ),
-      ],
+      ),
     );
   }
 }

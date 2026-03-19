@@ -1,19 +1,17 @@
 import 'package:flutter/material.dart';
+
 import '../services/posthog_api_error.dart';
 
 class ErrorView extends StatelessWidget {
-  const ErrorView({
-    super.key,
-    required this.error,
-    this.onRetry,
-  });
-
   final Object error;
   final VoidCallback? onRetry;
 
+  const ErrorView({super.key, required this.error, this.onRetry});
+
   @override
   Widget build(BuildContext context) {
-    final (icon, title, subtitle) = _errorContent();
+    final theme = Theme.of(context);
+    final (icon, title, message) = _errorDetails();
 
     return Center(
       child: Padding(
@@ -21,26 +19,24 @@ class ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 48, color: const Color(0xFF6F6A63)),
+            Icon(icon, size: 56, color: theme.colorScheme.error.withValues(alpha: 0.6)),
             const SizedBox(height: 16),
             Text(
               title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF1C1B19),
-              ),
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              subtitle,
-              style: const TextStyle(color: Color(0xFF6F6A63)),
+              message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
               textAlign: TextAlign.center,
             ),
             if (onRetry != null) ...[
               const SizedBox(height: 24),
-              ElevatedButton.icon(
+              OutlinedButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh),
                 label: const Text('Retry'),
@@ -52,23 +48,39 @@ class ErrorView extends StatelessWidget {
     );
   }
 
-  (IconData, String, String) _errorContent() {
+  (IconData, String, String) _errorDetails() {
     if (error is NetworkError) {
-      return (Icons.wifi_off, 'No connection', (error as NetworkError).message);
+      return (
+        Icons.wifi_off,
+        'No Connection',
+        'Check your internet connection and try again.',
+      );
     }
     if (error is AuthenticationError) {
-      return (Icons.lock_outline, 'Authentication failed', 'Check your API key and try again.');
+      return (
+        Icons.lock,
+        'Authentication Failed',
+        'Your API key may be invalid or expired.',
+      );
     }
     if (error is RateLimitError) {
-      final e = error as RateLimitError;
-      final msg = e.retryAfterSeconds != null
-          ? 'Too many requests. Try again in ${e.retryAfterSeconds}s.'
-          : 'Too many requests. Try again later.';
-      return (Icons.speed, 'Rate limited', msg);
+      final rl = error as RateLimitError;
+      final retryText = rl.retryAfter != null
+          ? 'Try again in ${rl.retryAfter!.inSeconds} seconds.'
+          : 'Please wait a moment and try again.';
+      return (Icons.timer, 'Too Many Requests', retryText);
     }
     if (error is PosthogApiError) {
-      return (Icons.error_outline, 'Error', (error as PosthogApiError).message);
+      return (
+        Icons.error_outline,
+        'Something Went Wrong',
+        (error as PosthogApiError).message,
+      );
     }
-    return (Icons.error_outline, 'Something went wrong', error.toString());
+    return (
+      Icons.error_outline,
+      'Something Went Wrong',
+      error.toString(),
+    );
   }
 }
