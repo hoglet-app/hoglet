@@ -455,6 +455,20 @@ class PosthogClient {
     return (data['results'] as List? ?? []).whereType<List>().toList();
   }
 
+  Future<List<List<dynamic>>> fetchDailyVisitors(String host, String projectId, String apiKey) async {
+    final data = await _post(host, '/api/projects/$projectId/query/', apiKey, {
+      'query': {'kind': 'HogQLQuery', 'query': "SELECT toDate(timestamp) as day, uniq(distinct_id) as visitors, count() as pageviews FROM events WHERE event = '\$pageview' AND timestamp > now() - INTERVAL 7 DAY GROUP BY day ORDER BY day ASC"},
+    });
+    return (data['results'] as List? ?? []).whereType<List>().toList();
+  }
+
+  Future<List<List<dynamic>>> fetchTopDevices(String host, String projectId, String apiKey) async {
+    final data = await _post(host, '/api/projects/$projectId/query/', apiKey, {
+      'query': {'kind': 'HogQLQuery', 'query': "SELECT properties.\$device_type as device, count() as views FROM events WHERE event = '\$pageview' AND timestamp > now() - INTERVAL 7 DAY AND device IS NOT NULL GROUP BY device ORDER BY views DESC LIMIT 6"},
+    });
+    return (data['results'] as List? ?? []).whereType<List>().toList();
+  }
+
   // -- Session Recordings --
 
   Future<List<Map<String, dynamic>>> fetchSessionRecordings(String host, String projectId, String apiKey) async {

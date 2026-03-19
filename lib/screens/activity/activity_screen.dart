@@ -246,6 +246,14 @@ class _EventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final url = event.getProperty('\$current_url') ?? event.getProperty('\$screen_name');
+    final browser = event.getProperty('\$browser');
+    final os = event.getProperty('\$os');
+    final city = event.getProperty('\$geoip_city_name');
+    final country = event.getProperty('\$geoip_country_code');
+    final isPageview = event.event == '\$pageview';
+    final isCustom = !event.event.startsWith('\$');
+
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 6),
@@ -263,29 +271,77 @@ class _EventCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (final column in columns)
+              // Row 1: Event name + timestamp
+              Row(
+                children: [
+                  Icon(
+                    isPageview ? Icons.pageview
+                        : isCustom ? Icons.bolt
+                        : Icons.analytics,
+                    size: 16,
+                    color: isCustom
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _formatEventName(event.event),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    event.timeAgo,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                  ),
+                ],
+              ),
+
+              // Row 2: Person
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.person_outline, size: 13, color: theme.colorScheme.onSurface.withValues(alpha: 0.35)),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        event.distinctId,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Row 3: URL (if present)
+              if (url != null && url.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 2),
+                  padding: const EdgeInsets.only(top: 2),
                   child: Row(
                     children: [
-                      SizedBox(
-                        width: 64,
-                        child: Text(
-                          column.label,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
+                      Icon(Icons.link, size: 13, color: theme.colorScheme.onSurface.withValues(alpha: 0.35)),
+                      const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          extractValue(event, column),
-                          style: column.builtinId == BuiltinColumnId.event
-                              ? theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                )
-                              : theme.textTheme.bodySmall,
+                          url,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 11,
+                            color: theme.colorScheme.primary.withValues(alpha: 0.7),
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -293,9 +349,63 @@ class _EventCard extends StatelessWidget {
                     ],
                   ),
                 ),
+
+              // Row 4: Device metadata chips
+              if (browser != null || os != null || city != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      if (os != null) _MetaChip(icon: Icons.devices, label: os, theme: theme),
+                      if (browser != null) _MetaChip(icon: Icons.web, label: browser, theme: theme),
+                      if (city != null || country != null)
+                        _MetaChip(
+                          icon: Icons.location_on,
+                          label: [city, country].where((s) => s != null).join(', '),
+                          theme: theme,
+                        ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  String _formatEventName(String name) {
+    if (name.startsWith('\$')) {
+      // Convert $pageview -> Pageview, $autocapture -> Autocapture
+      return name.substring(1).replaceAll('_', ' ').split(' ').map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '').join(' ');
+    }
+    return name;
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final ThemeData theme;
+  const _MetaChip({required this.icon, required this.label, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+          const SizedBox(width: 3),
+          Text(label, style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+        ],
       ),
     );
   }
