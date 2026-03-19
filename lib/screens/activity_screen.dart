@@ -33,7 +33,6 @@ class _ActivityScreenState extends State<ActivityScreen>
 
   final List<EventItem> _events = [];
   bool _isLoading = false;
-  bool _showApiKey = false;
   HostMode _hostMode = HostMode.us;
 
   final List<String> _visibleColumnKeys = [];
@@ -92,6 +91,7 @@ class _ActivityScreenState extends State<ActivityScreen>
     }
   }
 
+  // ignore: unused_element
   Future<void> _saveSettings() async {
     final host = _normalizeHost(_effectiveHost);
     final projectId = _projectIdController.text.trim();
@@ -209,153 +209,13 @@ class _ActivityScreenState extends State<ActivityScreen>
     }
   }
 
-  void _openSettingsSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFFF5F4EF),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Text(
-                    'Connection Settings',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<HostMode>(
-                value: _hostMode,
-                decoration: const InputDecoration(
-                  labelText: 'Host Region',
-                ),
-                items: const [
-                  DropdownMenuItem(
-                    value: HostMode.us,
-                    child: Text('US Cloud (us.posthog.com)'),
-                  ),
-                  DropdownMenuItem(
-                    value: HostMode.eu,
-                    child: Text('EU Cloud (eu.posthog.com)'),
-                  ),
-                  DropdownMenuItem(
-                    value: HostMode.custom,
-                    child: Text('Custom Domain'),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  setState(() {
-                    _hostMode = value;
-                  });
-                  _persistSettings();
-                },
-              ),
-              if (_hostMode == HostMode.custom) ...[
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _customHostController,
-                  decoration: const InputDecoration(
-                    labelText: 'Custom Host',
-                    hintText: 'https://your.posthog.domain',
-                  ),
-                  onChanged: (_) => _persistSettings(),
-                ),
-              ],
-              const SizedBox(height: 12),
-              TextField(
-                controller: _projectIdController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Project ID',
-                ),
-                onChanged: (_) => _persistSettings(),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _apiKeyController,
-                obscureText: !_showApiKey,
-                decoration: InputDecoration(
-                  labelText: 'Personal API Key',
-                  suffixIcon: IconButton(
-                    icon:
-                        Icon(_showApiKey ? Icons.visibility_off : Icons.visibility),
-                    onPressed: () {
-                      setState(() {
-                        _showApiKey = !_showApiKey;
-                      });
-                    },
-                  ),
-                ),
-                onChanged: (_) => _persistSettings(),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _saveSettings,
-                      child: const Text('Save Settings'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Admin-only: this app stores your personal API key on the device.',
-                style: TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 3,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF5F4EF),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFFF5F4EF),
-          elevation: 0,
-          title: const Text('Hoglet'),
-          actions: [
-            OutlinedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.bolt),
-              label: const Text('Quick start'),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              tooltip: 'Settings',
-              icon: const Icon(Icons.settings_outlined),
-              onPressed: _openSettingsSheet,
-            ),
-            const SizedBox(width: 8),
-          ],
-          bottom: const TabBar(
+      child: Column(
+        children: [
+          const TabBar(
             isScrollable: true,
             indicatorColor: Color(0xFFF15A24),
             labelColor: Color(0xFF1C1B19),
@@ -366,15 +226,17 @@ class _ActivityScreenState extends State<ActivityScreen>
               Tab(text: 'Live'),
             ],
           ),
-        ),
-        body: TabBarView(
-          physics: const NeverScrollableScrollPhysics(),
-          children: [
-            _buildEventsTab(),
-            _buildPlaceholder('Sessions view coming soon.'),
-            _buildPlaceholder('Live view coming soon.'),
-          ],
-        ),
+          Expanded(
+            child: TabBarView(
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                _buildEventsTab(),
+                _buildPlaceholder('Sessions view coming soon.'),
+                _buildPlaceholder('Live view coming soon.'),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
