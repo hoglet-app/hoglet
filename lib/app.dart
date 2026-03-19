@@ -25,6 +25,7 @@ class _HogletAppState extends State<HogletApp> {
         storageServiceProvider,
         dashboardStateProvider,
         insightsStateProvider,
+        flagsStateProvider,
       ],
       child: MaterialApp.router(
         title: 'Hoglet',
