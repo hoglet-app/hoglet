@@ -8,9 +8,11 @@ import 'services/storage_service.dart';
 import 'state/cohorts_state.dart';
 import 'state/dashboard_state.dart';
 import 'state/events_state.dart';
+import 'state/experiments_state.dart';
 import 'state/flags_state.dart';
 import 'state/insights_state.dart';
 import 'state/persons_state.dart';
+import 'state/surveys_state.dart';
 
 class HogletApp extends StatefulWidget {
   const HogletApp({super.key});
@@ -28,6 +30,8 @@ class _HogletAppState extends State<HogletApp> {
   late final EventsState _eventsState;
   late final PersonsState _personsState;
   late final CohortsState _cohortsState;
+  late final ExperimentsState _experimentsState;
+  late final SurveysState _surveysState;
 
   @override
   void initState() {
@@ -40,6 +44,8 @@ class _HogletAppState extends State<HogletApp> {
     _eventsState = EventsState();
     _personsState = PersonsState();
     _cohortsState = CohortsState();
+    _experimentsState = ExperimentsState();
+    _surveysState = SurveysState();
   }
 
   @override
@@ -50,6 +56,8 @@ class _HogletAppState extends State<HogletApp> {
     _eventsState.dispose();
     _personsState.dispose();
     _cohortsState.dispose();
+    _experimentsState.dispose();
+    _surveysState.dispose();
     _client.dispose();
     super.dispose();
   }
@@ -65,6 +73,8 @@ class _HogletAppState extends State<HogletApp> {
       eventsState: _eventsState,
       personsState: _personsState,
       cohortsState: _cohortsState,
+      experimentsState: _experimentsState,
+      surveysState: _surveysState,
       child: MaterialApp.router(
         title: 'Hoglet',
         debugShowCheckedModeBanner: false,

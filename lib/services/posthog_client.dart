@@ -6,9 +6,11 @@ import 'package:http/http.dart' as http;
 import '../models/cohort.dart';
 import '../models/dashboard.dart';
 import '../models/event_item.dart';
+import '../models/experiment.dart';
 import '../models/feature_flag.dart';
 import '../models/insight.dart';
 import '../models/person.dart';
+import '../models/survey.dart';
 import 'posthog_api_error.dart';
 
 class PosthogClient {
@@ -336,6 +338,32 @@ class PosthogClient {
     final data = await _get(host, '/api/projects/$projectId/cohorts/$cohortId/persons/', apiKey);
     final results = data['results'] as List? ?? [];
     return results.whereType<Map<String, dynamic>>().map((j) => Person.fromJson(j)).toList();
+  }
+
+  // -- Experiments --
+
+  Future<List<Experiment>> fetchExperiments(String host, String projectId, String apiKey) async {
+    final data = await _get(host, '/api/environments/$projectId/experiments/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => Experiment.fromJson(j)).toList();
+  }
+
+  Future<Experiment> fetchExperiment(String host, String projectId, String apiKey, int id) async {
+    final data = await _get(host, '/api/environments/$projectId/experiments/$id/', apiKey);
+    return Experiment.fromJson(data as Map<String, dynamic>);
+  }
+
+  // -- Surveys --
+
+  Future<List<Survey>> fetchSurveys(String host, String projectId, String apiKey) async {
+    final data = await _get(host, '/api/environments/$projectId/surveys/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => Survey.fromJson(j)).toList();
+  }
+
+  Future<Survey> fetchSurvey(String host, String projectId, String apiKey, int id) async {
+    final data = await _get(host, '/api/environments/$projectId/surveys/$id/', apiKey);
+    return Survey.fromJson(data as Map<String, dynamic>);
   }
 
   void dispose() {

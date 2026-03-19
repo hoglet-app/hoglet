@@ -54,12 +54,12 @@ class AppDrawer extends StatelessWidget {
           _DrawerItem(
             icon: Icons.science,
             label: 'Experiments',
-            onTap: () => _showComingSoon(context, 'Experiments'),
+            onTap: () => _navigateToRoute(context, '/experiments'),
           ),
           _DrawerItem(
             icon: Icons.assignment,
             label: 'Surveys',
-            onTap: () => _showComingSoon(context, 'Surveys'),
+            onTap: () => _navigateToRoute(context, '/surveys'),
           ),
           _SectionHeader('MONITORING'),
           _DrawerItem(

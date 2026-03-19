@@ -4,7 +4,11 @@ import 'package:go_router/go_router.dart';
 import '../screens/activity/activity_screen.dart';
 import '../screens/cohorts/cohort_detail_screen.dart';
 import '../screens/cohorts/cohorts_list_screen.dart';
+import '../screens/experiments/experiment_detail_screen.dart';
+import '../screens/experiments/experiments_list_screen.dart';
 import '../screens/insights/insights_list_screen.dart';
+import '../screens/surveys/survey_detail_screen.dart';
+import '../screens/surveys/surveys_list_screen.dart';
 import '../screens/flags/flag_detail_screen.dart';
 import '../screens/flags/flags_list_screen.dart';
 import '../screens/home/dashboard_detail_screen.dart';
@@ -151,6 +155,32 @@ final appRouter = GoRouter(
           builder: (context, state) => CohortDetailScreen(
             cohortId: state.pathParameters['cohortId']!,
           ),
+        ),
+      ],
+    ),
+    GoRoute(
+      path: RoutePaths.experiments,
+      name: RouteNames.experiments,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const ExperimentsListScreen(),
+      routes: [
+        GoRoute(
+          path: RoutePaths.experimentDetail,
+          name: RouteNames.experimentDetail,
+          builder: (context, state) => ExperimentDetailScreen(experimentId: state.pathParameters['experimentId']!),
+        ),
+      ],
+    ),
+    GoRoute(
+      path: RoutePaths.surveys,
+      name: RouteNames.surveys,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const SurveysListScreen(),
+      routes: [
+        GoRoute(
+          path: RoutePaths.surveyDetail,
+          name: RouteNames.surveyDetail,
+          builder: (context, state) => SurveyDetailScreen(surveyId: state.pathParameters['surveyId']!),
         ),
       ],
     ),
