@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../screens/home/dashboard_detail_screen.dart';
+import '../screens/home/dashboard_list_screen.dart';
+import '../screens/insights/insight_detail_screen.dart';
 import '../screens/onboarding/welcome_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/shell/app_shell.dart';
@@ -25,15 +28,32 @@ final appRouter = GoRouter(
       builder: (context, state, navigationShell) =>
           AppShell(navigationShell: navigationShell),
       branches: [
-        // Home tab
+        // Home tab — Dashboards
         StatefulShellBranch(
           navigatorKey: _homeNavigatorKey,
           routes: [
             GoRoute(
               path: RoutePaths.home,
               name: RouteNames.home,
-              builder: (context, state) =>
-                  const _PlaceholderScreen(title: 'Dashboards', icon: Icons.dashboard),
+              builder: (context, state) => const DashboardListScreen(),
+              routes: [
+                GoRoute(
+                  path: RoutePaths.dashboardDetail,
+                  name: RouteNames.dashboardDetail,
+                  builder: (context, state) => DashboardDetailScreen(
+                    dashboardId: state.pathParameters['dashboardId']!,
+                  ),
+                  routes: [
+                    GoRoute(
+                      path: RoutePaths.insightDetail,
+                      name: RouteNames.insightDetail,
+                      builder: (context, state) => InsightDetailScreen(
+                        insightId: state.pathParameters['insightId']!,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
@@ -87,17 +107,20 @@ class _PlaceholderScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title),
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          onPressed: () => Scaffold.of(context).openDrawer(),
+        ),
+      ),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 64, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 16),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
+            Text(title, style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
             Text(
               'Coming in a future phase',

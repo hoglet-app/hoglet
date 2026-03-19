@@ -2,15 +2,21 @@ import 'package:flutter/widgets.dart';
 
 import '../services/posthog_client.dart';
 import '../services/storage_service.dart';
+import '../state/dashboard_state.dart';
+import '../state/insights_state.dart';
 
 class AppProviders extends InheritedWidget {
   final PosthogClient client;
   final StorageService storage;
+  final DashboardState dashboardState;
+  final InsightsState insightsState;
 
   const AppProviders({
     super.key,
     required this.client,
     required this.storage,
+    required this.dashboardState,
+    required this.insightsState,
     required super.child,
   });
 

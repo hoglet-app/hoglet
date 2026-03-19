@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/dashboard.dart';
+import '../models/insight.dart';
 import 'posthog_api_error.dart';
 
 class PosthogClient {
@@ -108,6 +110,65 @@ class PosthogClient {
     } catch (_) {
       return false;
     }
+  }
+
+  // -- Dashboards --
+
+  Future<List<Dashboard>> fetchDashboards(
+    String host,
+    String projectId,
+    String apiKey,
+  ) async {
+    final data = await _get(host, '/api/environments/$projectId/dashboards/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results
+        .whereType<Map<String, dynamic>>()
+        .map((json) => Dashboard.fromJson(json))
+        .toList();
+  }
+
+  Future<Dashboard> fetchDashboard(
+    String host,
+    String projectId,
+    String apiKey,
+    int dashboardId,
+  ) async {
+    final data = await _get(
+      host,
+      '/api/environments/$projectId/dashboards/$dashboardId/',
+      apiKey,
+    );
+    return Dashboard.fromJson(data as Map<String, dynamic>);
+  }
+
+  // -- Insights --
+
+  Future<List<Insight>> fetchInsights(
+    String host,
+    String projectId,
+    String apiKey,
+  ) async {
+    final data = await _get(host, '/api/environments/$projectId/insights/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results
+        .whereType<Map<String, dynamic>>()
+        .map((json) => Insight.fromJson(json))
+        .toList();
+  }
+
+  Future<Insight> fetchInsight(
+    String host,
+    String projectId,
+    String apiKey,
+    int insightId,
+  ) async {
+    final data = await _get(
+      host,
+      '/api/environments/$projectId/insights/$insightId/',
+      apiKey,
+      timeout: const Duration(seconds: 30),
+    );
+    return Insight.fromJson(data as Map<String, dynamic>);
   }
 
   void dispose() {
