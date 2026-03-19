@@ -3,6 +3,7 @@ import 'package:disco/disco.dart';
 import '../services/posthog_client.dart';
 import '../services/storage_service.dart';
 import '../state/dashboard_state.dart';
+import '../state/events_state.dart';
 import '../state/flags_state.dart';
 import '../state/insights_state.dart';
 
@@ -29,5 +30,13 @@ final insightsStateProvider = Provider<InsightsState>(
 
 final flagsStateProvider = Provider<FlagsState>(
   (context) => FlagsState(client: posthogClientProvider.of(context)),
+  dispose: (state) => state.dispose(),
+);
+
+final eventsStateProvider = Provider<EventsState>(
+  (context) => EventsState(
+    client: posthogClientProvider.of(context),
+    storage: storageServiceProvider.of(context),
+  ),
   dispose: (state) => state.dispose(),
 );
