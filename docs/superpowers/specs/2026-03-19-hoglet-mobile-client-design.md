@@ -203,7 +203,7 @@ Drawer includes a **project switcher** at the top (logo, project name, org, regi
 | Charts | fl_chart | Native Flutter charts: line, bar, pie. Funnels as custom stacked bars. |
 | HTTP | http (existing) | Keep existing package. Simple and sufficient. |
 | Storage | flutter_secure_storage (existing) | Secure credential persistence. |
-| DI | Solid widget (flutter_solidart) | Provides services at app root. |
+| DI | disco package | Provides services at app root via Disco widget + context.get<T>(). |
 
 ### Project Structure
 
@@ -291,7 +291,7 @@ PostHog API → PosthogClient (services/) → Resource/Signal (state/) → Resou
 - **Services** are pure async. They take parameters, call HTTP, return model objects. No signals.
 - **State** layer creates `Resource` instances that wrap service calls. `Resource` auto-manages loading/error/ready states. `source` parameter triggers re-fetch when dependencies change (e.g., project ID switch).
 - **Screens** use `ResourceBuilder` for async data and `SignalBuilder` for reactive UI. `Show` widget for conditional rendering (e.g., logged in vs not).
-- **Solid widget** at app root provides `PosthogClient` and `AuthService` via DI. Screens access via `context.get<T>()`.
+- **Disco widget** at app root provides `PosthogClient` and `AuthService` via DI. Screens access via `context.get<T>()`.
 
 ### Pagination
 
