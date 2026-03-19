@@ -4,7 +4,9 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import '../models/dashboard.dart';
 import '../models/event_item.dart';
+import '../models/insight.dart';
 import 'posthog_api_error.dart';
 
 class PosthogClient {
@@ -207,5 +209,57 @@ class PosthogClient {
       return decoded.cast<Map<String, dynamic>>();
     }
     return [];
+  }
+
+  Future<List<Dashboard>> fetchDashboards({
+    required String host,
+    required String projectId,
+    required String apiKey,
+  }) async {
+    final uri = Uri.parse('$host/api/environments/$projectId/dashboards/');
+    final response = await _get(uri, apiKey);
+    final decoded = jsonDecode(response.body);
+    final results = decoded is Map && decoded['results'] is List
+        ? decoded['results'] as List
+        : decoded is List ? decoded : [];
+    return results.map((d) => Dashboard.fromJson(d as Map<String, dynamic>)).toList();
+  }
+
+  Future<Dashboard> fetchDashboard({
+    required String host,
+    required String projectId,
+    required String apiKey,
+    required int dashboardId,
+  }) async {
+    final uri = Uri.parse('$host/api/environments/$projectId/dashboards/$dashboardId/');
+    final response = await _get(uri, apiKey);
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    return Dashboard.fromJson(decoded);
+  }
+
+  Future<Insight> fetchInsight({
+    required String host,
+    required String projectId,
+    required String apiKey,
+    required int insightId,
+  }) async {
+    final uri = Uri.parse('$host/api/environments/$projectId/insights/$insightId/');
+    final response = await _get(uri, apiKey);
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    return Insight.fromJson(decoded);
+  }
+
+  Future<List<Insight>> fetchInsights({
+    required String host,
+    required String projectId,
+    required String apiKey,
+  }) async {
+    final uri = Uri.parse('$host/api/environments/$projectId/insights/');
+    final response = await _get(uri, apiKey);
+    final decoded = jsonDecode(response.body);
+    final results = decoded is Map && decoded['results'] is List
+        ? decoded['results'] as List
+        : decoded is List ? decoded : [];
+    return results.map((d) => Insight.fromJson(d as Map<String, dynamic>)).toList();
   }
 }
