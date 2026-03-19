@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'di/providers.dart';
@@ -40,12 +41,14 @@ class _HogletAppState extends State<HogletApp> {
   late final AlertsState _alertsState;
   late final WebAnalyticsState _webAnalyticsState;
   late final RecordingsState _recordingsState;
+  late final GoRouter _router;
 
   @override
   void initState() {
     super.initState();
     _client = PosthogClient();
     _storage = StorageService();
+    _router = createAppRouter(_storage);
     _dashboardState = DashboardState();
     _insightsState = InsightsState();
     _flagsState = FlagsState();
@@ -74,6 +77,7 @@ class _HogletAppState extends State<HogletApp> {
     _alertsState.dispose();
     _webAnalyticsState.dispose();
     _recordingsState.dispose();
+    _router.dispose();
     _client.dispose();
     super.dispose();
   }
@@ -99,7 +103,7 @@ class _HogletAppState extends State<HogletApp> {
         title: 'Hoglet',
         debugShowCheckedModeBanner: false,
         theme: _buildTheme(),
-        routerConfig: appRouter,
+        routerConfig: _router,
       ),
     );
   }

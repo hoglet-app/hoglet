@@ -25,6 +25,7 @@ import '../screens/persons/person_detail_screen.dart';
 import '../screens/persons/persons_list_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/shell/app_shell.dart';
+import '../services/storage_service.dart';
 import 'route_names.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -33,9 +34,18 @@ final _activityNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'activity');
 final _flagsNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'flags');
 final _settingsNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'settings');
 
-final appRouter = GoRouter(
+GoRouter createAppRouter(StorageService storage) => GoRouter(
   navigatorKey: _rootNavigatorKey,
-  initialLocation: RoutePaths.welcome,
+  initialLocation: RoutePaths.home,
+  redirect: (context, state) async {
+    final credentials = await storage.readCredentials();
+    final isLoggedIn = credentials != null;
+    final isOnWelcome = state.matchedLocation == RoutePaths.welcome;
+
+    if (!isLoggedIn && !isOnWelcome) return RoutePaths.welcome;
+    if (isLoggedIn && isOnWelcome) return RoutePaths.home;
+    return null;
+  },
   routes: [
     GoRoute(
       path: RoutePaths.welcome,
