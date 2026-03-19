@@ -8,86 +8,30 @@ import '../services/posthog_client.dart';
 import '../services/storage_service.dart';
 
 class EventsState {
-  EventsState({required this.client, required this.storage});
-
-  final PosthogClient client;
-  final StorageService storage;
-
   final events = Signal<List<EventItem>>([]);
   final isLoading = Signal(false);
+  final isLoadingMore = Signal(false);
+  final hasMore = Signal(true);
   final error = Signal<Object?>(null);
+  final visibleColumns = Signal<List<ColumnSpec>>(ColumnSpec.defaultColumns);
+  final availableProperties = Signal<List<String>>([]);
 
-  final visibleColumnKeys = Signal<List<String>>([]);
-  final columnRegistry = Signal<Map<String, ColumnSpec>>({});
-  final availableColumns = Signal<List<ColumnOption>>([]);
-  final isLoadingColumns = Signal(false);
+  static const _columnsStorageKey = 'events_visible_columns';
+  static const _pageSize = 100;
 
-  void registerBuiltinColumns() {
-    final defaults = [
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.event,
-        label: 'Event',
-        flex: 2,
-      ),
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.person,
-        label: 'Person',
-        flex: 2,
-      ),
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.url,
-        label: 'URL / Screen',
-        flex: 3,
-      ),
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.library,
-        label: 'Library',
-        flex: 1,
-      ),
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.time,
-        label: 'Time',
-        flex: 1,
-      ),
-    ];
-
-    final registry = Map<String, ColumnSpec>.from(columnRegistry.value);
-    for (final spec in defaults) {
-      registry[spec.key] = spec;
-    }
-    columnRegistry.value = registry;
-
-    if (visibleColumnKeys.value.isEmpty) {
-      visibleColumnKeys.value = _defaultVisibleKeys();
-    }
-  }
-
-  Future<void> loadVisibleColumns() async {
-    final raw = await storage.read(StorageService.keyVisibleColumns);
-    _restoreVisibleColumns(raw);
-  }
-
-  Future<void> saveVisibleColumns() async {
-    await storage.write(
-      StorageService.keyVisibleColumns,
-      jsonEncode(visibleColumnKeys.value),
-    );
-  }
-
-  Future<void> fetchEvents({
-    required String host,
-    required String projectId,
-    required String apiKey,
-  }) async {
+  Future<void> fetchEvents(
+    PosthogClient client,
+    String host,
+    String projectId,
+    String apiKey,
+  ) async {
     isLoading.value = true;
     error.value = null;
+    hasMore.value = true;
     try {
-      final result = await client.fetchEvents(
-        host: host,
-        projectId: projectId,
-        apiKey: apiKey,
-      );
+      final result = await client.fetchEvents(host, projectId, apiKey, limit: _pageSize);
       events.value = result;
+      hasMore.value = result.length >= _pageSize;
     } catch (e) {
       error.value = e;
     } finally {
@@ -95,143 +39,104 @@ class EventsState {
     }
   }
 
-  Future<void> loadAvailableColumns({
-    required String host,
-    required String projectId,
-    required String apiKey,
-  }) async {
-    if (isLoadingColumns.value) return;
-
-    isLoadingColumns.value = true;
-
+  Future<void> loadMoreEvents(
+    PosthogClient client,
+    String host,
+    String projectId,
+    String apiKey,
+  ) async {
+    if (isLoadingMore.value || !hasMore.value || events.value.isEmpty) return;
+    isLoadingMore.value = true;
     try {
-      final eventProps = await client.fetchPropertyDefinitions(
-        host: host,
-        projectId: projectId,
-        apiKey: apiKey,
+      final lastTimestamp = events.value.last.timestamp;
+      final olderEvents = await client.fetchEvents(host, projectId, apiKey, limit: _pageSize);
+      // Filter to only events older than current last
+      final newEvents = olderEvents.where((e) =>
+        e.timestamp.isBefore(lastTimestamp)
+      ).toList();
+      if (newEvents.isEmpty) {
+        hasMore.value = false;
+      } else {
+        events.value = [...events.value, ...newEvents];
+      }
+    } catch (_) {
+      // Non-critical
+    } finally {
+      isLoadingMore.value = false;
+    }
+  }
+
+  Future<void> loadPropertyDefinitions(
+    PosthogClient client,
+    String host,
+    String projectId,
+    String apiKey,
+  ) async {
+    try {
+      final defs = await client.fetchPropertyDefinitions(
+        host, projectId, apiKey,
         type: 'event',
       );
-      final personProps = await client.fetchPropertyDefinitions(
-        host: host,
-        projectId: projectId,
-        apiKey: apiKey,
-        type: 'person',
-      );
-      final sessionProps = await client.fetchPropertyDefinitions(
-        host: host,
-        projectId: projectId,
-        apiKey: apiKey,
-        type: 'session',
-      );
-
-      final options = <ColumnOption>[
-        ...eventProps.map(
-          (name) => ColumnOption.property(
-            category: ColumnCategory.event,
-            propertyKey: name,
-          ),
-        ),
-        ...personProps.map(
-          (name) => ColumnOption.property(
-            category: ColumnCategory.person,
-            propertyKey: name,
-          ),
-        ),
-        ...sessionProps.map(
-          (name) => ColumnOption.property(
-            category: ColumnCategory.session,
-            propertyKey: name,
-          ),
-        ),
-      ];
-
-      availableColumns.value = options;
-      _refreshRegistry();
+      availableProperties.value = defs
+          .map((d) => d['name']?.toString() ?? '')
+          .where((n) => n.isNotEmpty)
+          .toList();
     } catch (_) {
-      // ignore errors; UI will show empty list
-    } finally {
-      isLoadingColumns.value = false;
+      // Non-critical — properties are optional
     }
   }
 
-  ColumnSpec columnForKey(String key) {
-    return columnRegistry.value[key] ?? ColumnSpec.fallback(key);
-  }
-
-  void _refreshRegistry() {
-    final registry = Map<String, ColumnSpec>.from(columnRegistry.value);
-    for (final option in availableColumns.value) {
-      final spec = ColumnSpec.property(
-        propertyKey: option.propertyKey,
-        label: option.label,
-        category: option.category,
-      );
-      registry[spec.key] = spec;
-    }
-    columnRegistry.value = registry;
-
-    if (visibleColumnKeys.value.isEmpty) {
-      visibleColumnKeys.value = _defaultVisibleKeys();
-    }
-  }
-
-  void _restoreVisibleColumns(String? raw) {
-    if (raw == null || raw.isEmpty) {
-      if (visibleColumnKeys.value.isEmpty) {
-        visibleColumnKeys.value = _defaultVisibleKeys();
+  Future<void> loadSavedColumns(StorageService storage) async {
+    final json = await storage.read(_columnsStorageKey);
+    if (json != null) {
+      try {
+        final list = jsonDecode(json) as List;
+        final columns = list
+            .whereType<Map<String, dynamic>>()
+            .map((j) => ColumnSpec.fromJson(j))
+            .toList();
+        if (columns.isNotEmpty) {
+          visibleColumns.value = columns;
+        }
+      } catch (_) {
+        // Fallback to defaults
       }
-      return;
-    }
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is List) {
-        visibleColumnKeys.value = decoded.map((e) => e.toString()).toList();
-      }
-    } catch (_) {}
-
-    if (visibleColumnKeys.value.isEmpty) {
-      visibleColumnKeys.value = _defaultVisibleKeys();
     }
   }
 
-  List<String> _defaultVisibleKeys() {
-    return [
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.event,
-        label: 'Event',
-        flex: 2,
-      ).key,
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.person,
-        label: 'Person',
-        flex: 2,
-      ).key,
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.url,
-        label: 'URL / Screen',
-        flex: 3,
-      ).key,
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.library,
-        label: 'Library',
-        flex: 1,
-      ).key,
-      ColumnSpec.builtin(
-        id: BuiltinColumnId.time,
-        label: 'Time',
-        flex: 1,
-      ).key,
-    ];
+  Future<void> saveColumns(StorageService storage) async {
+    final json = jsonEncode(
+      visibleColumns.value.map((c) => c.toJson()).toList(),
+    );
+    await storage.write(_columnsStorageKey, json);
+  }
+
+  void addColumn(ColumnSpec column) {
+    if (!visibleColumns.value.any((c) => c.id == column.id)) {
+      visibleColumns.value = [...visibleColumns.value, column];
+    }
+  }
+
+  void removeColumn(String columnId) {
+    visibleColumns.value =
+        visibleColumns.value.where((c) => c.id != columnId).toList();
+  }
+
+  void reorderColumns(int oldIndex, int newIndex) {
+    final columns = List<ColumnSpec>.from(visibleColumns.value);
+    if (newIndex > oldIndex) newIndex--;
+    final item = columns.removeAt(oldIndex);
+    columns.insert(newIndex, item);
+    visibleColumns.value = columns;
   }
 
   void dispose() {
     events.dispose();
     isLoading.dispose();
+    isLoadingMore.dispose();
+    hasMore.dispose();
     error.dispose();
-    visibleColumnKeys.dispose();
-    columnRegistry.dispose();
-    availableColumns.dispose();
-    isLoadingColumns.dispose();
+    visibleColumns.dispose();
+    availableProperties.dispose();
   }
 }

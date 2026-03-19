@@ -1,25 +1,44 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class StorageService {
-  static const _storage = FlutterSecureStorage();
+  final FlutterSecureStorage _storage;
 
-  static const keyHost = 'posthog_host';
-  static const keyHostMode = 'posthog_host_mode';
-  static const keyCustomHost = 'posthog_custom_host';
-  static const keyProjectId = 'posthog_project_id';
-  static const keyApiKey = 'posthog_personal_api_key';
-  static const keyVisibleColumns = 'hoglet_visible_columns';
+  StorageService({FlutterSecureStorage? storage})
+      : _storage = storage ?? const FlutterSecureStorage();
 
   Future<String?> read(String key) => _storage.read(key: key);
-  Future<void> write(String key, String value) => _storage.write(key: key, value: value);
+
+  Future<void> write(String key, String value) =>
+      _storage.write(key: key, value: value);
+
   Future<void> delete(String key) => _storage.delete(key: key);
 
-  Future<void> clearAll() async {
-    await _storage.delete(key: keyHost);
-    await _storage.delete(key: keyHostMode);
-    await _storage.delete(key: keyCustomHost);
-    await _storage.delete(key: keyProjectId);
-    await _storage.delete(key: keyApiKey);
-    await _storage.delete(key: keyVisibleColumns);
+  Future<Map<String, String>> readAll() => _storage.readAll();
+
+  Future<void> deleteAll() => _storage.deleteAll();
+
+  // Convenience methods for credential management
+  Future<({String host, String projectId, String apiKey})?> readCredentials() async {
+    final host = await read('host');
+    final projectId = await read('projectId');
+    final apiKey = await read('apiKey');
+    if (host == null || projectId == null || apiKey == null) return null;
+    return (host: host, projectId: projectId, apiKey: apiKey);
+  }
+
+  Future<void> saveCredentials({
+    required String host,
+    required String projectId,
+    required String apiKey,
+  }) async {
+    await write('host', host);
+    await write('projectId', projectId);
+    await write('apiKey', apiKey);
+  }
+
+  Future<void> clearCredentials() async {
+    await delete('host');
+    await delete('projectId');
+    await delete('apiKey');
   }
 }

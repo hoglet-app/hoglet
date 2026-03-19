@@ -3,412 +3,323 @@ import 'package:flutter/services.dart';
 import 'package:flutter_solidart/flutter_solidart.dart';
 
 import '../../di/providers.dart';
-import '../../models/feature_flag.dart';
-import '../../services/storage_service.dart';
-import '../../state/flags_state.dart';
 import '../../widgets/error_view.dart';
-import '../../widgets/loading_states.dart';
+import '../../widgets/open_in_posthog.dart';
+import '../../widgets/shimmer_list.dart';
 import '../../widgets/status_badge.dart';
 
 class FlagDetailScreen extends StatefulWidget {
-  const FlagDetailScreen({super.key, required this.flagId});
+  final String flagId;
 
-  final int flagId;
+  const FlagDetailScreen({super.key, required this.flagId});
 
   @override
   State<FlagDetailScreen> createState() => _FlagDetailScreenState();
 }
 
 class _FlagDetailScreenState extends State<FlagDetailScreen> {
-  FlagsState? _flagsState;
-  StorageService? _storage;
-  bool _initialized = false;
-
-  String _host = '';
-  String _projectId = '';
-  String _apiKey = '';
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_initialized) {
-      _initialized = true;
-      _flagsState = AppProviders.of(context).flagsState;
-      _storage = AppProviders.of(context).storage;
-      _load();
-    }
+    _loadFlag();
   }
 
-  Future<void> _load() async {
-    _host = await _storage!.read(StorageService.keyHost) ?? '';
-    _projectId = await _storage!.read(StorageService.keyProjectId) ?? '';
-    _apiKey = await _storage!.read(StorageService.keyApiKey) ?? '';
-    await _flagsState!.fetchFlag(
-      host: _host,
-      projectId: _projectId,
-      apiKey: _apiKey,
-      flagId: widget.flagId,
+  Future<void> _loadFlag() async {
+    final providers = AppProviders.of(context);
+    final credentials = await providers.storage.readCredentials();
+    if (credentials == null) return;
+
+    final flagId = int.tryParse(widget.flagId);
+    if (flagId == null) return;
+
+    providers.flagsState.fetchFlag(
+      providers.client,
+      credentials.host,
+      credentials.projectId,
+      credentials.apiKey,
+      flagId,
     );
   }
 
-  String _formatDate(DateTime dt) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
-  }
-
-  Future<void> _toggle(FeatureFlag flag) async {
+  Future<void> _toggleFlag() async {
     HapticFeedback.mediumImpact();
-    await _flagsState!.toggleFlag(
-      host: _host,
-      projectId: _projectId,
-      apiKey: _apiKey,
-      flagId: flag.id,
-      active: !flag.active,
-    );
+    final providers = AppProviders.of(context);
+    final flag = providers.flagsState.flag.value;
+    if (flag == null) return;
+
+    final credentials = await providers.storage.readCredentials();
+    if (credentials == null) return;
+
+    try {
+      await providers.flagsState.toggleFlag(
+        providers.client,
+        credentials.host,
+        credentials.projectId,
+        credentials.apiKey,
+        flag.id,
+        !flag.active,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to toggle: $e')),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final flagsState = _flagsState;
-    if (flagsState == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    final state = AppProviders.of(context).flagsState;
+    final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: SignalBuilder(
-          builder: (context, _) {
-            final flag = flagsState.selectedFlag.value;
-            return Text(flag?.key ?? 'Feature Flag');
-          },
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _load,
+    return SignalBuilder(
+      builder: (context, _) {
+        final flag = state.flag.value;
+        final isLoading = state.isLoadingDetail.value;
+        final error = state.detailError.value;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(flag?.key ?? 'Flag'),
+            actions: [
+              OpenInPostHogButton(path: '/feature_flags/${widget.flagId}'),
+            ],
           ),
-        ],
-      ),
-      body: SignalBuilder(
-        builder: (context, _) {
-          final isLoading = flagsState.isLoadingDetail.value;
-          final error = flagsState.detailError.value;
-          final flag = flagsState.selectedFlag.value;
+          body: () {
+            if (isLoading && flag == null) return const ShimmerList(itemCount: 4);
+            if (error != null && flag == null) {
+              return ErrorView(error: error, onRetry: _loadFlag);
+            }
+            if (flag == null) return const Center(child: Text('Flag not found'));
 
-          if (isLoading) {
-            return const ShimmerList();
-          }
-          if (error != null) {
-            return ErrorView(
-              error: error,
-              onRetry: _load,
-            );
-          }
-          if (flag == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          return RefreshIndicator(
-            onRefresh: _load,
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                // Toggle card
-                Card(
-                  color: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: const BorderSide(color: Color(0xFFE3DED6)),
-                  ),
-                  child: SwitchListTile(
-                    title: const Text(
-                      'Enabled',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1C1B19),
+            return RefreshIndicator(
+              onRefresh: _loadFlag,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // Key + toggle
+                  Card(
+                    elevation: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  flag.key,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                StatusBadge(active: flag.active),
+                              ],
+                            ),
+                          ),
+                          Switch.adaptive(
+                            value: flag.active,
+                            onChanged: (_) => _toggleFlag(),
+                            activeColor: theme.colorScheme.primary,
+                          ),
+                        ],
                       ),
                     ),
-                    subtitle: Text(
-                      flag.active ? 'This flag is active' : 'This flag is inactive',
-                      style: const TextStyle(color: Color(0xFF6F6A63)),
-                    ),
-                    value: flag.active,
-                    onChanged: (_) => _toggle(flag),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                // Info card
-                Card(
-                  color: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: const BorderSide(color: Color(0xFFE3DED6)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Details',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1C1B19),
+
+                  // Name + description
+                  if (flag.name != null && flag.name!.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text('Name', style: theme.textTheme.labelSmall?.copyWith(
+                      letterSpacing: 1.2,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    )),
+                    const SizedBox(height: 4),
+                    Text(flag.name!, style: theme.textTheme.bodyLarge),
+                  ],
+
+                  // Rollout percentage
+                  if (flag.rolloutPercentage != null) ...[
+                    const SizedBox(height: 16),
+                    Text('Rollout', style: theme.textTheme.labelSmall?.copyWith(
+                      letterSpacing: 1.2,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    )),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: flag.rolloutPercentage! / 100,
+                        minHeight: 12,
+                        backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${flag.rolloutPercentage}% of users',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+
+                  // Tags
+                  if (flag.tags.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: flag.tags.map((tag) => Chip(
+                        label: Text(tag, style: const TextStyle(fontSize: 11)),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      )).toList(),
+                    ),
+                  ],
+
+                  // Multivariate variants
+                  if (flag.isMultivariate && flag.variants.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Text('VARIANTS', style: theme.textTheme.labelSmall?.copyWith(
+                      letterSpacing: 1.2,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    )),
+                    const SizedBox(height: 8),
+                    ...flag.variants.map((v) => Card(
+                      elevation: 0,
+                      margin: const EdgeInsets.only(bottom: 4),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 4,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(v.name ?? v.key, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                                  Text(v.key, style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace', fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+                                ],
+                              ),
+                            ),
+                            Text('${v.rolloutPercentage}%', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: theme.colorScheme.primary)),
+                          ],
+                        ),
+                      ),
+                    )),
+                  ],
+
+                  // Release conditions
+                  if (flag.releaseConditions.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Text('RELEASE CONDITIONS', style: theme.textTheme.labelSmall?.copyWith(
+                      letterSpacing: 1.2,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    )),
+                    const SizedBox(height: 8),
+                    ...flag.releaseConditions.asMap().entries.map((entry) {
+                      final idx = entry.key;
+                      final condition = entry.value;
+                      return Card(
+                        elevation: 0,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'Condition ${idx + 1}',
+                                    style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                                  ),
+                                  if (condition.variant != null) ...[
+                                    const Spacer(),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(condition.variant!, style: TextStyle(fontSize: 10, color: theme.colorScheme.primary, fontWeight: FontWeight.w600)),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(condition.summary, style: theme.textTheme.bodyMedium),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        _InfoRow(label: 'Key', value: flag.key),
-                        const SizedBox(height: 8),
-                        _InfoRow(label: 'Name', value: flag.name.isNotEmpty ? flag.name : '—'),
-                        const SizedBox(height: 8),
-                        _InfoRow(
-                          label: 'Status',
-                          valueWidget: StatusBadge(
-                            label: flag.active ? 'Active' : 'Inactive',
-                            active: flag.active,
-                          ),
-                        ),
-                        if (flag.rolloutPercentage != null) ...[
-                          const SizedBox(height: 8),
-                          _InfoRow(
-                            label: 'Rollout',
-                            value: '${flag.rolloutPercentage}%',
-                          ),
+                      );
+                    }),
+                  ],
+
+                  // Metadata
+                  const SizedBox(height: 24),
+                  Text('DETAILS', style: theme.textTheme.labelSmall?.copyWith(
+                    letterSpacing: 1.2,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                  )),
+                  const SizedBox(height: 8),
+                  Card(
+                    elevation: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        children: [
+                          if (flag.createdByName != null)
+                            _DetailRow(label: 'Created by', value: flag.createdByName!, theme: theme),
+                          if (flag.createdAt != null)
+                            _DetailRow(label: 'Created', value: '${flag.createdAt!.year}-${flag.createdAt!.month.toString().padLeft(2, '0')}-${flag.createdAt!.day.toString().padLeft(2, '0')}', theme: theme),
+                          _DetailRow(label: 'Type', value: flag.isMultivariate ? 'Multivariate' : 'Boolean', theme: theme),
+                          if (flag.ensureExperiencesContinuity)
+                            _DetailRow(label: 'Persistence', value: 'Experience continuity enabled', theme: theme),
                         ],
-                        if (flag.createdAt != null) ...[
-                          const SizedBox(height: 8),
-                          _InfoRow(
-                            label: 'Created',
-                            value: _formatDate(flag.createdAt!),
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                // Release conditions
-                _ReleaseConditionsSection(flag: flag),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.label,
-    this.value,
-    this.valueWidget,
-  });
-
-  final String label;
-  final String? value;
-  final Widget? valueWidget;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              color: Color(0xFF6F6A63),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: valueWidget ??
-              Text(
-                value ?? '—',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF1C1B19),
-                ),
-              ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ReleaseConditionsSection extends StatelessWidget {
-  const _ReleaseConditionsSection({required this.flag});
-
-  final FeatureFlag flag;
-
-  @override
-  Widget build(BuildContext context) {
-    final conditions = flag.releaseConditions;
-
-    if (conditions.isEmpty) {
-      return Card(
-        color: Colors.white,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: Color(0xFFE3DED6)),
-        ),
-        child: const Padding(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Release Conditions',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1C1B19),
-                ),
-              ),
-              SizedBox(height: 12),
-              Text(
-                'No release conditions defined.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF6F6A63),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Card(
-      color: Colors.white,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFE3DED6)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Release Conditions',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1C1B19),
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...conditions.asMap().entries.map((entry) {
-              final index = entry.key;
-              final group = entry.value;
-              return _ConditionGroup(
-                groupNumber: index + 1,
-                group: group,
-                isLast: index == conditions.length - 1,
-              );
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ConditionGroup extends StatelessWidget {
-  const _ConditionGroup({
-    required this.groupNumber,
-    required this.group,
-    required this.isLast,
-  });
-
-  final int groupNumber;
-  final Map<String, dynamic> group;
-  final bool isLast;
-
-  @override
-  Widget build(BuildContext context) {
-    final rollout = group['rollout_percentage'];
-    final properties = group['properties'] as List? ?? [];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              'Group $groupNumber',
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF1C1B19),
-              ),
-            ),
-            if (rollout != null) ...[
-              const SizedBox(width: 8),
-              Text(
-                '$rollout% rollout',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF6F6A63),
-                ),
-              ),
-            ],
-          ],
-        ),
-        if (properties.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          ...properties.map((prop) {
-            final p = prop is Map<String, dynamic> ? prop : <String, dynamic>{};
-            final key = p['key']?.toString() ?? '';
-            final operator = p['operator']?.toString() ?? '';
-            final value = p['value']?.toString() ?? '';
-            return Padding(
-              padding: const EdgeInsets.only(left: 12, bottom: 4),
-              child: Text(
-                '$key $operator $value'.trim(),
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF6F6A63),
-                ),
+                ],
               ),
             );
-          }),
-        ] else ...[
-          const SizedBox(height: 4),
-          const Padding(
-            padding: EdgeInsets.only(left: 12),
-            child: Text(
-              'All users',
-              style: TextStyle(
-                fontSize: 12,
-                color: Color(0xFF6F6A63),
-              ),
-            ),
+          }(),
+        );
+      },
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final ThemeData theme;
+  const _DetailRow({required this.label, required this.value, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
           ),
+          Expanded(child: Text(value, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500))),
         ],
-        if (!isLast) ...[
-          const SizedBox(height: 8),
-          const Divider(color: Color(0xFFE3DED6)),
-          const SizedBox(height: 8),
-        ],
-      ],
+      ),
     );
   }
 }

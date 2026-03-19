@@ -4,32 +4,23 @@ import '../models/feature_flag.dart';
 import '../services/posthog_client.dart';
 
 class FlagsState {
-  FlagsState({required this.client});
-
-  final PosthogClient client;
-
   final flags = Signal<List<FeatureFlag>>([]);
+  final flag = Signal<FeatureFlag?>(null);
   final isLoading = Signal(false);
-  final error = Signal<Object?>(null);
-
-  final selectedFlag = Signal<FeatureFlag?>(null);
   final isLoadingDetail = Signal(false);
+  final error = Signal<Object?>(null);
   final detailError = Signal<Object?>(null);
 
-  Future<void> fetchFlags({
-    required String host,
-    required String projectId,
-    required String apiKey,
-  }) async {
+  Future<void> fetchFlags(
+    PosthogClient client,
+    String host,
+    String projectId,
+    String apiKey,
+  ) async {
     isLoading.value = true;
     error.value = null;
     try {
-      final result = await client.fetchFeatureFlags(
-        host: host,
-        projectId: projectId,
-        apiKey: apiKey,
-      );
-      flags.value = result;
+      flags.value = await client.fetchFeatureFlags(host, projectId, apiKey);
     } catch (e) {
       error.value = e;
     } finally {
@@ -37,22 +28,17 @@ class FlagsState {
     }
   }
 
-  Future<void> fetchFlag({
-    required String host,
-    required String projectId,
-    required String apiKey,
-    required int flagId,
-  }) async {
+  Future<void> fetchFlag(
+    PosthogClient client,
+    String host,
+    String projectId,
+    String apiKey,
+    int flagId,
+  ) async {
     isLoadingDetail.value = true;
     detailError.value = null;
     try {
-      final result = await client.fetchFeatureFlag(
-        host: host,
-        projectId: projectId,
-        apiKey: apiKey,
-        flagId: flagId,
-      );
-      selectedFlag.value = result;
+      flag.value = await client.fetchFeatureFlag(host, projectId, apiKey, flagId);
     } catch (e) {
       detailError.value = e;
     } finally {
@@ -60,40 +46,43 @@ class FlagsState {
     }
   }
 
-  Future<void> toggleFlag({
-    required String host,
-    required String projectId,
-    required String apiKey,
-    required int flagId,
-    required bool active,
-  }) async {
+  Future<void> toggleFlag(
+    PosthogClient client,
+    String host,
+    String projectId,
+    String apiKey,
+    int flagId,
+    bool active,
+  ) async {
     try {
       final updated = await client.toggleFeatureFlag(
-        host: host,
-        projectId: projectId,
-        apiKey: apiKey,
-        flagId: flagId,
-        active: active,
+        host, projectId, apiKey, flagId, active,
       );
-      // Update flag in the list
-      flags.value = flags.value
-          .map((f) => f.id == flagId ? updated : f)
-          .toList();
-      // Update selectedFlag if it matches
-      if (selectedFlag.value?.id == flagId) {
-        selectedFlag.value = updated;
+
+      // Update in list
+      final currentFlags = List<FeatureFlag>.from(flags.value);
+      final index = currentFlags.indexWhere((f) => f.id == flagId);
+      if (index != -1) {
+        currentFlags[index] = updated;
+        flags.value = currentFlags;
+      }
+
+      // Update detail if viewing this flag
+      if (flag.value?.id == flagId) {
+        flag.value = updated;
       }
     } catch (e) {
       error.value = e;
+      rethrow;
     }
   }
 
   void dispose() {
     flags.dispose();
+    flag.dispose();
     isLoading.dispose();
-    error.dispose();
-    selectedFlag.dispose();
     isLoadingDetail.dispose();
+    error.dispose();
     detailError.dispose();
   }
 }

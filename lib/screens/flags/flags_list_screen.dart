@@ -5,10 +5,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../di/providers.dart';
 import '../../models/feature_flag.dart';
-import '../../services/storage_service.dart';
-import '../../state/flags_state.dart';
+import '../../routing/route_names.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/error_view.dart';
-import '../../widgets/loading_states.dart';
+import '../../widgets/shimmer_list.dart';
 import '../../widgets/status_badge.dart';
 
 class FlagsListScreen extends StatefulWidget {
@@ -19,36 +19,69 @@ class FlagsListScreen extends StatefulWidget {
 }
 
 class _FlagsListScreenState extends State<FlagsListScreen> {
-  FlagsState? _flagsState;
-  StorageService? _storage;
-  bool _initialized = false;
-
-  String _host = '';
-  String _projectId = '';
-  String _apiKey = '';
-
   final _searchController = TextEditingController();
   String _searchQuery = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text;
-      });
-    });
-  }
+  String _statusFilter = 'all'; // all, active, inactive
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_initialized) {
-      _initialized = true;
-      _flagsState = AppProviders.of(context).flagsState;
-      _storage = AppProviders.of(context).storage;
-      _load();
+    _loadFlags();
+  }
+
+  Future<void> _loadFlags() async {
+    final providers = AppProviders.of(context);
+    final credentials = await providers.storage.readCredentials();
+    if (credentials == null) return;
+
+    providers.flagsState.fetchFlags(
+      providers.client,
+      credentials.host,
+      credentials.projectId,
+      credentials.apiKey,
+    );
+  }
+
+  Future<void> _toggleFlag(FeatureFlag flag) async {
+    HapticFeedback.mediumImpact();
+    final providers = AppProviders.of(context);
+    final credentials = await providers.storage.readCredentials();
+    if (credentials == null) return;
+
+    try {
+      await providers.flagsState.toggleFlag(
+        providers.client,
+        credentials.host,
+        credentials.projectId,
+        credentials.apiKey,
+        flag.id,
+        !flag.active,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to toggle flag: $e')),
+        );
+      }
     }
+  }
+
+  List<FeatureFlag> _filteredFlags(List<FeatureFlag> flags) {
+    var result = flags;
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      result = result.where((f) {
+        return f.key.toLowerCase().contains(query) ||
+            (f.name?.toLowerCase().contains(query) ?? false) ||
+            f.tags.any((t) => t.toLowerCase().contains(query));
+      }).toList();
+    }
+    if (_statusFilter == 'active') {
+      result = result.where((f) => f.active).toList();
+    } else if (_statusFilter == 'inactive') {
+      result = result.where((f) => !f.active).toList();
+    }
+    return result;
   }
 
   @override
@@ -57,222 +90,211 @@ class _FlagsListScreenState extends State<FlagsListScreen> {
     super.dispose();
   }
 
-  bool _missingCredentials = false;
-
-  Future<void> _load() async {
-    _host = await _storage!.read(StorageService.keyHost) ?? '';
-    _projectId = await _storage!.read(StorageService.keyProjectId) ?? '';
-    _apiKey = await _storage!.read(StorageService.keyApiKey) ?? '';
-
-    if (_host.isEmpty || _projectId.isEmpty || _apiKey.isEmpty) {
-      if (mounted) {
-        setState(() => _missingCredentials = true);
-      }
-      return;
-    }
-
-    if (mounted) {
-      setState(() => _missingCredentials = false);
-    }
-
-    await _flagsState!.fetchFlags(
-      host: _host,
-      projectId: _projectId,
-      apiKey: _apiKey,
-    );
-  }
-
-  List<FeatureFlag> _filtered(List<FeatureFlag> flags) {
-    final q = _searchQuery.toLowerCase().trim();
-    if (q.isEmpty) return flags;
-    return flags
-        .where((f) =>
-            f.key.toLowerCase().contains(q) ||
-            f.name.toLowerCase().contains(q))
-        .toList();
-  }
-
-  Future<void> _toggle(FeatureFlag flag) async {
-    HapticFeedback.mediumImpact();
-    await _flagsState!.toggleFlag(
-      host: _host,
-      projectId: _projectId,
-      apiKey: _apiKey,
-      flagId: flag.id,
-      active: !flag.active,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final flagsState = _flagsState;
-    if (flagsState == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    final state = AppProviders.of(context).flagsState;
 
-    if (_missingCredentials) {
-      return const EmptyState(
-        icon: Icons.settings_outlined,
-        title: 'No connection configured',
-        subtitle: 'Configure your connection in Settings to get started.',
-      );
-    }
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: 'Search flags…',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () => _searchController.clear(),
-                    )
-                  : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE3DED6)),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Feature Flags'),
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          onPressed: () => Scaffold.of(context).openDrawer(),
+        ),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search flags...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE3DED6)),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              filled: true,
-              fillColor: Colors.white,
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
-        ),
-        Expanded(
-          child: SignalBuilder(
-            builder: (context, _) {
-              final isLoading = flagsState.isLoading.value;
-              final error = flagsState.error.value;
-
-              if (isLoading) {
-                return const ShimmerList();
-              }
-              if (error != null) {
-                return ErrorView(
-                  error: error,
-                  onRetry: _load,
-                );
-              }
-
-              final flags = flagsState.flags.value;
-              final filtered = _filtered(flags);
-
-              if (filtered.isEmpty) {
-                return EmptyState(
-                  icon: Icons.flag_outlined,
-                  title: _searchQuery.isEmpty
-                      ? 'No feature flags yet'
-                      : 'No results for "$_searchQuery"',
-                  subtitle: _searchQuery.isEmpty
-                      ? 'Create a feature flag in PostHog to see it here.'
-                      : null,
-                );
-              }
-
-              return RefreshIndicator(
-                onRefresh: _load,
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: filtered.length,
-                  itemBuilder: (context, index) {
-                    final flag = filtered[index];
-                    return _FlagRow(
-                      flag: flag,
-                      onTap: () => context.go('/flags/flag/${flag.id}'),
-                      onToggle: () => _toggle(flag),
-                    );
-                  },
-                ),
-              );
-            },
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                for (final entry in {'all': 'All', 'active': 'Active', 'inactive': 'Inactive'}.entries)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      onTap: () => setState(() => _statusFilter = entry.key),
+                      child: Chip(
+                        label: Text(entry.value, style: TextStyle(fontSize: 12, color: _statusFilter == entry.key ? Colors.white : null, fontWeight: _statusFilter == entry.key ? FontWeight.w600 : FontWeight.normal)),
+                        backgroundColor: _statusFilter == entry.key ? Theme.of(context).colorScheme.primary : null,
+                        padding: EdgeInsets.zero,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 4),
+          Expanded(
+            child: SignalBuilder(
+              builder: (context, _) {
+                if (state.isLoading.value && state.flags.value.isEmpty) {
+                  return const ShimmerList();
+                }
+                if (state.error.value != null && state.flags.value.isEmpty) {
+                  return ErrorView(
+                    error: state.error.value!,
+                    onRetry: _loadFlags,
+                  );
+                }
+
+                final flags = _filteredFlags(state.flags.value);
+
+                if (flags.isEmpty) {
+                  return EmptyState(
+                    icon: Icons.flag_outlined,
+                    title: _searchQuery.isNotEmpty
+                        ? 'No matching flags'
+                        : 'No feature flags yet',
+                    message: _searchQuery.isEmpty
+                        ? 'Create feature flags in PostHog web'
+                        : null,
+                  );
+                }
+
+                return RefreshIndicator(
+                  onRefresh: _loadFlags,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: flags.length,
+                    itemBuilder: (context, index) {
+                      final flag = flags[index];
+                      return _FlagCard(
+                        flag: flag,
+                        onTap: () => context.goNamed(
+                          RouteNames.flagDetail,
+                          pathParameters: {'flagId': flag.id.toString()},
+                        ),
+                        onToggle: () => _toggleFlag(flag),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _FlagRow extends StatelessWidget {
-  const _FlagRow({
+class _FlagCard extends StatelessWidget {
+  final FeatureFlag flag;
+  final VoidCallback onTap;
+  final VoidCallback onToggle;
+
+  const _FlagCard({
     required this.flag,
     required this.onTap,
     required this.onToggle,
   });
 
-  final FeatureFlag flag;
-  final VoidCallback onTap;
-  final VoidCallback onToggle;
-
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Card(
-        color: Colors.white,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: Color(0xFFE3DED6)),
+    final theme = Theme.of(context);
+
+    return Card(
+      elevation: 0,
+      color: theme.cardTheme.color ?? Colors.white,
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.08),
         ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        flag.key,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1C1B19),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      flag.key,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'monospace',
                       ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          StatusBadge(
-                            label: flag.active ? 'Active' : 'Inactive',
-                            active: flag.active,
-                          ),
-                          if (flag.rolloutPercentage != null) ...[
-                            const SizedBox(width: 8),
-                            Text(
-                              '${flag.rolloutPercentage}%',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF6F6A63),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                Switch(
-                  value: flag.active,
-                  onChanged: (_) => onToggle(),
+                  Switch.adaptive(
+                    value: flag.active,
+                    onChanged: (_) => onToggle(),
+                    activeColor: theme.colorScheme.primary,
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  StatusBadge(active: flag.active),
+                  if (flag.rolloutPercentage != null) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      '${flag.rolloutPercentage}%',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                  if (flag.isMultivariate) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.purple.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text('Multi', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: Colors.purple)),
+                    ),
+                  ],
+                ],
+              ),
+              if (flag.tags.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 4,
+                  children: flag.tags.take(4).map((tag) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(tag, style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+                  )).toList(),
                 ),
               ],
-            ),
+            ],
           ),
         ),
       ),

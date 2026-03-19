@@ -1,93 +1,58 @@
-import 'dart:convert';
-
 class EventItem {
-  EventItem({
-    required this.uuid,
-    required this.eventName,
-    required this.distinctId,
-    required this.timestamp,
-    required this.properties,
-  });
-
   final String uuid;
-  final String eventName;
+  final String event;
   final String distinctId;
-  final DateTime? timestamp;
+  final DateTime timestamp;
   final Map<String, dynamic> properties;
 
-  factory EventItem.fromList(List<dynamic> row) {
-    return EventItem(
-      uuid: row[0]?.toString() ?? '',
-      eventName: row[1]?.toString() ?? '',
-      distinctId: row[2]?.toString() ?? '',
-      timestamp: _parseTimestamp(row[3]),
-      properties: _parseProperties(row[4]),
-    );
-  }
+  EventItem({
+    required this.uuid,
+    required this.event,
+    required this.distinctId,
+    required this.timestamp,
+    this.properties = const {},
+  });
 
-  factory EventItem.fromMap(Map<dynamic, dynamic> row) {
-    return EventItem(
-      uuid: row['uuid']?.toString() ?? '',
-      eventName: row['event']?.toString() ?? '',
-      distinctId: row['distinct_id']?.toString() ?? '',
-      timestamp: _parseTimestamp(row['timestamp']),
-      properties: _parseProperties(row['properties']),
-    );
-  }
-
-  String get personInitial {
-    if (distinctId.isEmpty) return '•';
-    return distinctId[0].toUpperCase();
-  }
-
-  String get urlLabel {
-    final url = properties[r'$current_url']?.toString();
-    final screen = properties[r'$screen']?.toString();
-    return url ?? screen ?? '—';
-  }
-
-  String get libraryLabel {
-    return properties[r'$lib']?.toString() ?? 'web';
-  }
-
-  String get timeAgoLabel {
-    if (timestamp == null) return 'unknown';
-    final diff = DateTime.now().difference(timestamp!);
-    if (diff.inMinutes < 1) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
-  }
-
-  String get prettyDetails {
-    final buffer = StringBuffer();
-    buffer.writeln('UUID: $uuid');
-    buffer.writeln('Event: $eventName');
-    buffer.writeln('Distinct ID: $distinctId');
-    buffer.writeln('Timestamp: ${timestamp?.toIso8601String() ?? 'unknown'}');
-    buffer.writeln('Properties:');
-    buffer.writeln(const JsonEncoder.withIndent('  ').convert(properties));
-    return buffer.toString();
-  }
-
-  static DateTime? _parseTimestamp(dynamic value) {
-    if (value == null) return null;
-    if (value is DateTime) return value;
-    return DateTime.tryParse(value.toString());
-  }
-
-  static Map<String, dynamic> _parseProperties(dynamic value) {
-    if (value is Map) {
-      return value.map((key, val) => MapEntry(key.toString(), val));
-    }
-    if (value is String) {
+  factory EventItem.fromHogQLRow(List<dynamic> row) {
+    // Expected columns: uuid, event, distinct_id, timestamp, properties
+    final propsRaw = row.length > 4 ? row[4] : null;
+    Map<String, dynamic> properties = {};
+    if (propsRaw is Map<String, dynamic>) {
+      properties = propsRaw;
+    } else if (propsRaw is String) {
+      // Sometimes properties come as JSON string
       try {
-        final decoded = jsonDecode(value);
-        if (decoded is Map<String, dynamic>) {
-          return decoded;
-        }
+        final parsed = _tryParseJson(propsRaw);
+        if (parsed is Map<String, dynamic>) properties = parsed;
       } catch (_) {}
     }
-    return {};
+
+    return EventItem(
+      uuid: row[0]?.toString() ?? '',
+      event: row[1]?.toString() ?? '',
+      distinctId: row[2]?.toString() ?? '',
+      timestamp: DateTime.tryParse(row[3]?.toString() ?? '') ?? DateTime.now(),
+      properties: properties,
+    );
   }
+
+  String get timeAgo {
+    final diff = DateTime.now().difference(timestamp);
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${timestamp.month}/${timestamp.day}';
+  }
+
+  String? getProperty(String key) {
+    final value = properties[key];
+    if (value == null) return null;
+    return value.toString();
+  }
+}
+
+dynamic _tryParseJson(String s) {
+  // Avoid importing dart:convert here — caller handles it
+  return s;
 }

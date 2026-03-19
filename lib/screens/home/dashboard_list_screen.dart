@@ -4,10 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../di/providers.dart';
 import '../../models/dashboard.dart';
-import '../../services/storage_service.dart';
-import '../../state/dashboard_state.dart';
+import '../../routing/route_names.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/error_view.dart';
-import '../../widgets/loading_states.dart';
+import '../../widgets/shimmer_list.dart';
 
 class DashboardListScreen extends StatefulWidget {
   const DashboardListScreen({super.key});
@@ -17,32 +17,27 @@ class DashboardListScreen extends StatefulWidget {
 }
 
 class _DashboardListScreenState extends State<DashboardListScreen> {
-  DashboardState? _dashboardState;
-  StorageService? _storage;
-  bool _initialized = false;
-
   final _searchController = TextEditingController();
   String _searchQuery = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text;
-      });
-    });
-  }
+  String? _tagFilter;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_initialized) {
-      _initialized = true;
-      _dashboardState = AppProviders.of(context).dashboardState;
-      _storage = AppProviders.of(context).storage;
-      _load();
-    }
+    _loadDashboards();
+  }
+
+  Future<void> _loadDashboards() async {
+    final providers = AppProviders.of(context);
+    final credentials = await providers.storage.readCredentials();
+    if (credentials == null) return;
+
+    providers.dashboardState.fetchDashboards(
+      providers.client,
+      credentials.host,
+      credentials.projectId,
+      credentials.apiKey,
+    );
   }
 
   @override
@@ -51,230 +46,254 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
     super.dispose();
   }
 
-  bool _missingCredentials = false;
+  List<Dashboard> _filteredDashboards(List<Dashboard> dashboards) {
+    var result = List<Dashboard>.from(dashboards);
 
-  Future<void> _load() async {
-    final host = await _storage!.read(StorageService.keyHost) ?? '';
-    final projectId = await _storage!.read(StorageService.keyProjectId) ?? '';
-    final apiKey = await _storage!.read(StorageService.keyApiKey) ?? '';
-
-    if (host.isEmpty || projectId.isEmpty || apiKey.isEmpty) {
-      if (mounted) {
-        setState(() => _missingCredentials = true);
-      }
-      return;
+    // Filter by search
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      result = result.where((d) {
+        return d.name.toLowerCase().contains(query) ||
+            (d.description?.toLowerCase().contains(query) ?? false) ||
+            d.tags.any((t) => t.toLowerCase().contains(query));
+      }).toList();
     }
 
-    if (mounted) {
-      setState(() => _missingCredentials = false);
+    // Filter by tag
+    if (_tagFilter != null) {
+      result = result.where((d) => d.tags.contains(_tagFilter)).toList();
     }
 
-    await _dashboardState!.fetchDashboards(
-      host: host,
-      projectId: projectId,
-      apiKey: apiKey,
-    );
-  }
-
-  List<Dashboard> _sorted(List<Dashboard> dashboards) {
-    final q = _searchQuery.toLowerCase().trim();
-    final filtered = q.isEmpty
-        ? List<Dashboard>.from(dashboards)
-        : dashboards
-            .where((d) => d.name.toLowerCase().contains(q))
-            .toList();
-
-    filtered.sort((a, b) {
-      if (a.pinned && !b.pinned) return -1;
-      if (!a.pinned && b.pinned) return 1;
-      final aTime = a.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final bTime = b.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      return bTime.compareTo(aTime);
+    // Sort: pinned first, then by last modified
+    result.sort((a, b) {
+      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+      final aDate = a.lastModifiedAt ?? a.createdAt;
+      final bDate = b.lastModifiedAt ?? b.createdAt;
+      if (aDate != null && bDate != null) return bDate.compareTo(aDate);
+      return 0;
     });
 
-    return filtered;
+    return result;
+  }
+
+  Set<String> _allTags(List<Dashboard> dashboards) {
+    final tags = <String>{};
+    for (final d in dashboards) {
+      tags.addAll(d.tags);
+    }
+    return tags;
   }
 
   @override
   Widget build(BuildContext context) {
-    final dashboardState = _dashboardState;
-    if (dashboardState == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    final state = AppProviders.of(context).dashboardState;
 
-    if (_missingCredentials) {
-      return const EmptyState(
-        icon: Icons.settings_outlined,
-        title: 'No connection configured',
-        subtitle: 'Configure your connection in Settings to get started.',
-      );
-    }
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: 'Search dashboards…',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () => _searchController.clear(),
-                    )
-                  : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE3DED6)),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Dashboards'),
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          onPressed: () => Scaffold.of(context).openDrawer(),
+        ),
+      ),
+      body: Column(
+        children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search dashboards...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE3DED6)),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              filled: true,
-              fillColor: Colors.white,
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
-        ),
-        Expanded(
-          child: SignalBuilder(
-            builder: (context, _) {
-              final isLoading = dashboardState.isLoading.value;
-              final error = dashboardState.error.value;
-
-              if (isLoading) {
-                return const ShimmerList();
-              }
-              if (error != null) {
-                return ErrorView(
-                  error: error,
-                  onRetry: _load,
-                );
-              }
-
-              final dashboards = dashboardState.dashboards.value;
-              final sorted = _sorted(dashboards);
-
-              if (sorted.isEmpty) {
-                return EmptyState(
-                  icon: Icons.dashboard_outlined,
-                  title: _searchQuery.isEmpty
-                      ? 'No dashboards yet'
-                      : 'No results for "$_searchQuery"',
-                  subtitle: _searchQuery.isEmpty
-                      ? 'Create a dashboard in PostHog to see it here.'
-                      : null,
-                );
-              }
-
-              return RefreshIndicator(
-                onRefresh: _load,
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: sorted.length,
-                  itemBuilder: (context, index) {
-                    final dashboard = sorted[index];
-                    return _DashboardCard(
-                      dashboard: dashboard,
-                      onTap: () => context.go(
-                        '/home/dashboard/${dashboard.id}',
+          // Tag filter chips
+          SignalBuilder(builder: (context, _) {
+            final tags = _allTags(state.dashboards.value);
+            if (tags.isEmpty) return const SizedBox.shrink();
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      onTap: () => setState(() => _tagFilter = null),
+                      child: Chip(
+                        label: Text('All', style: TextStyle(fontSize: 12, color: _tagFilter == null ? Colors.white : null, fontWeight: _tagFilter == null ? FontWeight.w600 : FontWeight.normal)),
+                        backgroundColor: _tagFilter == null ? Theme.of(context).colorScheme.primary : null,
+                        padding: EdgeInsets.zero,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                    );
-                  },
-                ),
-              );
-            },
+                    ),
+                  ),
+                  for (final tag in tags)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: GestureDetector(
+                        onTap: () => setState(() => _tagFilter = _tagFilter == tag ? null : tag),
+                        child: Chip(
+                          label: Text(tag, style: TextStyle(fontSize: 12, color: _tagFilter == tag ? Colors.white : null, fontWeight: _tagFilter == tag ? FontWeight.w600 : FontWeight.normal)),
+                          backgroundColor: _tagFilter == tag ? Theme.of(context).colorScheme.primary : null,
+                          padding: EdgeInsets.zero,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 4),
+          // Dashboard list
+          Expanded(
+            child: SignalBuilder(
+              builder: (context, _) {
+                if (state.isLoading.value && state.dashboards.value.isEmpty) {
+                  return const ShimmerList();
+                }
+                if (state.error.value != null && state.dashboards.value.isEmpty) {
+                  return ErrorView(
+                    error: state.error.value!,
+                    onRetry: _loadDashboards,
+                  );
+                }
+
+                final dashboards = _filteredDashboards(state.dashboards.value);
+
+                if (dashboards.isEmpty) {
+                  return EmptyState(
+                    icon: Icons.dashboard_outlined,
+                    title: _searchQuery.isNotEmpty
+                        ? 'No matching dashboards'
+                        : 'No dashboards yet',
+                    message: _searchQuery.isEmpty
+                        ? 'Create dashboards in PostHog web'
+                        : null,
+                  );
+                }
+
+                return RefreshIndicator(
+                  onRefresh: _loadDashboards,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: dashboards.length,
+                    itemBuilder: (context, index) {
+                      final dashboard = dashboards[index];
+                      return _DashboardCard(
+                        dashboard: dashboard,
+                        onTap: () => context.goNamed(
+                          RouteNames.dashboardDetail,
+                          pathParameters: {
+                            'dashboardId': dashboard.id.toString(),
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
 class _DashboardCard extends StatelessWidget {
-  const _DashboardCard({
-    required this.dashboard,
-    required this.onTap,
-  });
-
   final Dashboard dashboard;
   final VoidCallback onTap;
 
+  const _DashboardCard({required this.dashboard, required this.onTap});
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Card(
-        color: Colors.white,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: Color(0xFFE3DED6)),
+    final theme = Theme.of(context);
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.08),
         ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                if (dashboard.pinned) ...[
-                  const Icon(
-                    Icons.push_pin,
-                    size: 16,
-                    color: Color(0xFFF15A24),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (dashboard.pinned)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Icon(Icons.push_pin, color: theme.colorScheme.primary, size: 16),
+                    ),
+                  Expanded(
+                    child: Text(
+                      dashboard.name,
+                      style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  const SizedBox(width: 8),
+                  Text(
+                    '${dashboard.tileCount} tiles',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                  ),
                 ],
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        dashboard.name,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1C1B19),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (dashboard.description != null &&
-                          dashboard.description!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          dashboard.description!,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF6F6A63),
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                      const SizedBox(height: 6),
-                      Text(
-                        '${dashboard.tiles.length} tile${dashboard.tiles.length == 1 ? '' : 's'}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF9E9890),
-                        ),
-                      ),
-                    ],
+              ),
+              if (dashboard.description != null && dashboard.description!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    dashboard.description!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.chevron_right,
-                  color: Color(0xFF9E9890),
+              if (dashboard.tags.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: dashboard.tags.take(5).map((tag) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(tag, style: TextStyle(fontSize: 10, color: theme.colorScheme.primary)),
+                  )).toList(),
                 ),
               ],
-            ),
+            ],
           ),
         ),
       ),
