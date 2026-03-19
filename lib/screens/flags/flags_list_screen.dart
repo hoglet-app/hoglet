@@ -21,6 +21,7 @@ class FlagsListScreen extends StatefulWidget {
 class _FlagsListScreenState extends State<FlagsListScreen> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  String _statusFilter = 'all'; // all, active, inactive
 
   @override
   void didChangeDependencies() {
@@ -66,12 +67,21 @@ class _FlagsListScreenState extends State<FlagsListScreen> {
   }
 
   List<FeatureFlag> _filteredFlags(List<FeatureFlag> flags) {
-    if (_searchQuery.isEmpty) return flags;
-    final query = _searchQuery.toLowerCase();
-    return flags.where((f) {
-      return f.key.toLowerCase().contains(query) ||
-          (f.name?.toLowerCase().contains(query) ?? false);
-    }).toList();
+    var result = flags;
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      result = result.where((f) {
+        return f.key.toLowerCase().contains(query) ||
+            (f.name?.toLowerCase().contains(query) ?? false) ||
+            f.tags.any((t) => t.toLowerCase().contains(query));
+      }).toList();
+    }
+    if (_statusFilter == 'active') {
+      result = result.where((f) => f.active).toList();
+    } else if (_statusFilter == 'inactive') {
+      result = result.where((f) => !f.active).toList();
+    }
+    return result;
   }
 
   @override
@@ -116,6 +126,28 @@ class _FlagsListScreenState extends State<FlagsListScreen> {
               onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                for (final entry in {'all': 'All', 'active': 'Active', 'inactive': 'Inactive'}.entries)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      onTap: () => setState(() => _statusFilter = entry.key),
+                      child: Chip(
+                        label: Text(entry.value, style: TextStyle(fontSize: 12, color: _statusFilter == entry.key ? Colors.white : null, fontWeight: _statusFilter == entry.key ? FontWeight.w600 : FontWeight.normal)),
+                        backgroundColor: _statusFilter == entry.key ? Theme.of(context).colorScheme.primary : null,
+                        padding: EdgeInsets.zero,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
           Expanded(
             child: SignalBuilder(
               builder: (context, _) {
@@ -187,7 +219,7 @@ class _FlagCard extends StatelessWidget {
 
     return Card(
       elevation: 0,
-      color: Colors.white,
+      color: theme.cardTheme.color ?? Colors.white,
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
@@ -195,37 +227,76 @@ class _FlagCard extends StatelessWidget {
           color: theme.colorScheme.onSurface.withValues(alpha: 0.08),
         ),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        title: Text(
-          flag.key,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-            fontFamily: 'monospace',
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Row(
-          children: [
-            StatusBadge(active: flag.active),
-            if (flag.rolloutPercentage != null) ...[
-              const SizedBox(width: 8),
-              Text(
-                '${flag.rolloutPercentage}%',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                ),
-              ),
-            ],
-          ],
-        ),
-        trailing: Switch.adaptive(
-          value: flag.active,
-          onChanged: (_) => onToggle(),
-          activeColor: theme.colorScheme.primary,
-        ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
         onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      flag.key,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'monospace',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: flag.active,
+                    onChanged: (_) => onToggle(),
+                    activeColor: theme.colorScheme.primary,
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  StatusBadge(active: flag.active),
+                  if (flag.rolloutPercentage != null) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      '${flag.rolloutPercentage}%',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                  if (flag.isMultivariate) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.purple.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text('Multi', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: Colors.purple)),
+                    ),
+                  ],
+                ],
+              ),
+              if (flag.tags.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 4,
+                  children: flag.tags.take(4).map((tag) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(tag, style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+                  )).toList(),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

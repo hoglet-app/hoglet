@@ -3,15 +3,23 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/action.dart';
 import '../models/alert.dart';
+import '../models/annotation.dart';
 import '../models/cohort.dart';
 import '../models/dashboard.dart';
+import '../models/early_access_feature.dart';
 import '../models/error_group.dart';
+import '../models/event_definition.dart';
 import '../models/event_item.dart';
 import '../models/experiment.dart';
 import '../models/feature_flag.dart';
+import '../models/group.dart';
 import '../models/insight.dart';
+import '../models/log_entry.dart';
 import '../models/person.dart';
+import '../models/product_tour.dart';
+import '../models/sql_result.dart';
 import '../models/survey.dart';
 import 'posthog_api_error.dart';
 
@@ -307,15 +315,21 @@ class PosthogClient {
 
   // -- Persons --
 
-  Future<List<Person>> fetchPersons(
+  Future<({List<Person> persons, bool hasNext})> fetchPersons(
     String host, String projectId, String apiKey, {
     String? search,
+    int limit = 100,
+    int offset = 0,
   }) async {
-    final params = <String, String>{};
+    final params = <String, String>{'limit': limit.toString(), 'offset': offset.toString()};
     if (search != null && search.isNotEmpty) params['search'] = search;
-    final data = await _get(host, '/api/environments/$projectId/persons/', apiKey, queryParams: params.isNotEmpty ? params : null);
+    final data = await _get(host, '/api/environments/$projectId/persons/', apiKey, queryParams: params);
     final results = data['results'] as List? ?? [];
-    return results.whereType<Map<String, dynamic>>().map((j) => Person.fromJson(j)).toList();
+    final hasNext = data['next'] != null;
+    return (
+      persons: results.whereType<Map<String, dynamic>>().map((j) => Person.fromJson(j)).toList(),
+      hasNext: hasNext,
+    );
   }
 
   Future<Person> fetchPerson(String host, String projectId, String apiKey, int personId) async {
@@ -381,6 +395,11 @@ class PosthogClient {
     return ErrorGroup.fromJson(data as Map<String, dynamic>);
   }
 
+  Future<ErrorGroup> updateErrorStatus(String host, String projectId, String apiKey, String errorId, String status) async {
+    final data = await _patch(host, '/api/environments/$projectId/error_tracking/groups/$errorId/', apiKey, {'status': status});
+    return ErrorGroup.fromJson(data as Map<String, dynamic>);
+  }
+
   // -- Alerts --
 
   Future<List<AlertItem>> fetchAlerts(String host, String projectId, String apiKey) async {
@@ -413,12 +432,323 @@ class PosthogClient {
     return {};
   }
 
+  // -- Web Analytics (Extended) --
+
+  Future<List<List<dynamic>>> fetchTopPages(String host, String projectId, String apiKey) async {
+    final data = await _post(host, '/api/projects/$projectId/query/', apiKey, {
+      'query': {'kind': 'HogQLQuery', 'query': "SELECT properties.\$pathname as path, count() as views, uniq(distinct_id) as visitors FROM events WHERE event = '\$pageview' AND timestamp > now() - INTERVAL 7 DAY GROUP BY path ORDER BY views DESC LIMIT 10"},
+    });
+    return (data['results'] as List? ?? []).whereType<List>().toList();
+  }
+
+  Future<List<List<dynamic>>> fetchTopReferrers(String host, String projectId, String apiKey) async {
+    final data = await _post(host, '/api/projects/$projectId/query/', apiKey, {
+      'query': {'kind': 'HogQLQuery', 'query': "SELECT properties.\$referring_domain as referrer, count() as views FROM events WHERE event = '\$pageview' AND timestamp > now() - INTERVAL 7 DAY AND referrer != '' AND referrer IS NOT NULL GROUP BY referrer ORDER BY views DESC LIMIT 10"},
+    });
+    return (data['results'] as List? ?? []).whereType<List>().toList();
+  }
+
+  Future<List<List<dynamic>>> fetchTopBrowsers(String host, String projectId, String apiKey) async {
+    final data = await _post(host, '/api/projects/$projectId/query/', apiKey, {
+      'query': {'kind': 'HogQLQuery', 'query': "SELECT properties.\$browser as browser, count() as views FROM events WHERE event = '\$pageview' AND timestamp > now() - INTERVAL 7 DAY AND browser IS NOT NULL GROUP BY browser ORDER BY views DESC LIMIT 8"},
+    });
+    return (data['results'] as List? ?? []).whereType<List>().toList();
+  }
+
   // -- Session Recordings --
 
   Future<List<Map<String, dynamic>>> fetchSessionRecordings(String host, String projectId, String apiKey) async {
     final data = await _get(host, '/api/environments/$projectId/session_recordings/', apiKey);
     final results = data['results'] as List? ?? [];
     return results.cast<Map<String, dynamic>>();
+  }
+
+  // -- Annotations --
+
+  Future<List<Annotation>> fetchAnnotations(String host, String projectId, String apiKey) async {
+    final data = await _get(host, '/api/projects/$projectId/annotations/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => Annotation.fromJson(j)).toList();
+  }
+
+  Future<Annotation> fetchAnnotation(String host, String projectId, String apiKey, int id) async {
+    final data = await _get(host, '/api/projects/$projectId/annotations/$id/', apiKey);
+    return Annotation.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Annotation> createAnnotation(
+    String host, String projectId, String apiKey, {
+    required String content,
+    required String dateMarker,
+    String scope = 'project',
+    int? dashboardItem,
+    int? dashboardId,
+  }) async {
+    final body = <String, dynamic>{
+      'content': content,
+      'date_marker': dateMarker,
+      'scope': scope,
+    };
+    if (dashboardItem != null) body['dashboard_item'] = dashboardItem;
+    if (dashboardId != null) body['dashboard_id'] = dashboardId;
+    final data = await _post(host, '/api/projects/$projectId/annotations/', apiKey, body);
+    return Annotation.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Annotation> updateAnnotation(
+    String host, String projectId, String apiKey, int id, {
+    String? content,
+    String? dateMarker,
+    String? scope,
+  }) async {
+    final body = <String, dynamic>{};
+    if (content != null) body['content'] = content;
+    if (dateMarker != null) body['date_marker'] = dateMarker;
+    if (scope != null) body['scope'] = scope;
+    final data = await _patch(host, '/api/projects/$projectId/annotations/$id/', apiKey, body);
+    return Annotation.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteAnnotation(String host, String projectId, String apiKey, int id) async {
+    try {
+      final response = await _httpClient
+          .delete(
+            _uri(host, '/api/projects/$projectId/annotations/$id/'),
+            headers: _headers(apiKey),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode >= 300) {
+        throw PosthogApiError.fromResponse(response.statusCode, response.body);
+      }
+    } on TimeoutException {
+      throw NetworkError('Request timed out');
+    } on http.ClientException catch (e) {
+      throw NetworkError('Connection failed', cause: e);
+    }
+  }
+
+  // -- HogQL (SQL Editor) --
+
+  Future<SqlResult> executeHogQL(
+    String host, String projectId, String apiKey,
+    String query, {
+    int limit = 100,
+  }) async {
+    final data = await _post(
+      host,
+      '/api/projects/$projectId/query/',
+      apiKey,
+      {
+        'query': {
+          'kind': 'HogQLQuery',
+          'query': query,
+        },
+      },
+      timeout: const Duration(seconds: 60),
+    );
+    return SqlResult.fromJson(data as Map<String, dynamic>);
+  }
+
+  // -- Actions --
+
+  Future<List<PosthogAction>> fetchActions(String host, String projectId, String apiKey) async {
+    final data = await _get(host, '/api/projects/$projectId/actions/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => PosthogAction.fromJson(j)).toList();
+  }
+
+  Future<PosthogAction> fetchAction(String host, String projectId, String apiKey, int id) async {
+    final data = await _get(host, '/api/projects/$projectId/actions/$id/', apiKey);
+    return PosthogAction.fromJson(data as Map<String, dynamic>);
+  }
+
+  // -- Event Definitions --
+
+  Future<List<EventDefinition>> fetchEventDefinitions(
+    String host, String projectId, String apiKey, {
+    String? search,
+    int limit = 100,
+  }) async {
+    final params = <String, String>{'limit': limit.toString()};
+    if (search != null && search.isNotEmpty) params['search'] = search;
+    final data = await _get(host, '/api/projects/$projectId/event_definitions/', apiKey, queryParams: params);
+    final results = data['results'] as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => EventDefinition.fromJson(j)).toList();
+  }
+
+  // -- Groups --
+
+  Future<List<GroupType>> fetchGroupTypes(String host, String projectId, String apiKey) async {
+    final data = await _get(host, '/api/projects/$projectId/groups_types/', apiKey);
+    if (data is List) {
+      return data.whereType<Map<String, dynamic>>().map((j) => GroupType.fromJson(j)).toList();
+    }
+    return [];
+  }
+
+  Future<List<Group>> fetchGroups(
+    String host, String projectId, String apiKey, {
+    required int groupTypeIndex,
+    String? search,
+    int limit = 100,
+  }) async {
+    final params = <String, String>{
+      'group_type_index': groupTypeIndex.toString(),
+      'limit': limit.toString(),
+    };
+    if (search != null && search.isNotEmpty) params['search'] = search;
+    final data = await _get(host, '/api/environments/$projectId/groups/', apiKey, queryParams: params);
+    final results = data['results'] as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => Group.fromJson(j)).toList();
+  }
+
+  // -- Early Access Features --
+
+  Future<List<EarlyAccessFeature>> fetchEarlyAccessFeatures(String host, String projectId, String apiKey) async {
+    final data = await _get(host, '/api/projects/$projectId/early_access_feature/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => EarlyAccessFeature.fromJson(j)).toList();
+  }
+
+  Future<EarlyAccessFeature> fetchEarlyAccessFeature(String host, String projectId, String apiKey, String id) async {
+    final data = await _get(host, '/api/projects/$projectId/early_access_feature/$id/', apiKey);
+    return EarlyAccessFeature.fromJson(data as Map<String, dynamic>);
+  }
+
+  // -- Product Tours --
+
+  Future<List<ProductTour>> fetchProductTours(String host, String projectId, String apiKey) async {
+    final data = await _get(host, '/api/projects/$projectId/product_tours/', apiKey);
+    final results = data['results'] as List? ?? [];
+    return results.whereType<Map<String, dynamic>>().map((j) => ProductTour.fromJson(j)).toList();
+  }
+
+  Future<ProductTour> fetchProductTour(String host, String projectId, String apiKey, String id) async {
+    final data = await _get(host, '/api/projects/$projectId/product_tours/$id/', apiKey);
+    return ProductTour.fromJson(data as Map<String, dynamic>);
+  }
+
+  // -- Logs (HogQL) --
+
+  Future<List<LogEntry>> fetchLogs(
+    String host, String projectId, String apiKey, {
+    String? search,
+    List<String> levels = const ['debug', 'log', 'info', 'warn', 'error'],
+    int limit = 100,
+  }) async {
+    final levelFilter = levels.map((l) => "'$l'").join(', ');
+    var query = 'SELECT instance_id, timestamp, level, message FROM log_entries WHERE 1=1';
+    query += " AND lower(level) IN ($levelFilter)";
+    if (search != null && search.isNotEmpty) {
+      final escaped = search.replaceAll("'", "\\'");
+      query += " AND (message ILIKE '%$escaped%' OR instance_id ILIKE '%$escaped%')";
+    }
+    query += ' ORDER BY timestamp DESC LIMIT $limit';
+
+    final data = await _post(
+      host,
+      '/api/projects/$projectId/query/',
+      apiKey,
+      {'query': {'kind': 'HogQLQuery', 'query': query}},
+      timeout: const Duration(seconds: 30),
+    );
+
+    final results = <LogEntry>[];
+    final rows = data['results'] as List? ?? [];
+    for (final row in rows) {
+      if (row is List) results.add(LogEntry.fromHogQLRow(row));
+    }
+    return results;
+  }
+
+  // -- LLM Analytics (HogQL) --
+
+  Future<Map<String, dynamic>> fetchLLMAnalytics(String host, String projectId, String apiKey) async {
+    // Query LLM generation events for aggregated metrics
+    final data = await _post(
+      host,
+      '/api/projects/$projectId/query/',
+      apiKey,
+      {
+        'query': {
+          'kind': 'HogQLQuery',
+          'query': '''
+SELECT
+  properties.\$ai_model as model,
+  count() as total_generations,
+  avg(properties.\$ai_latency) as avg_latency,
+  sum(properties.\$ai_input_tokens) as total_input_tokens,
+  sum(properties.\$ai_output_tokens) as total_output_tokens,
+  sum(properties.\$ai_total_cost) as total_cost
+FROM events
+WHERE event = '\$ai_generation'
+  AND timestamp > now() - INTERVAL 7 DAY
+GROUP BY model
+ORDER BY total_generations DESC
+'''
+        },
+      },
+      timeout: const Duration(seconds: 30),
+    );
+    return data as Map<String, dynamic>;
+  }
+
+  // -- Revenue Analytics (HogQL) --
+
+  Future<Map<String, dynamic>> fetchRevenueAnalytics(String host, String projectId, String apiKey) async {
+    final data = await _post(
+      host,
+      '/api/projects/$projectId/query/',
+      apiKey,
+      {
+        'query': {
+          'kind': 'HogQLQuery',
+          'query': '''
+SELECT
+  toDate(timestamp) as day,
+  count() as order_count,
+  sum(toFloat64OrNull(toString(properties.\$revenue))) as revenue,
+  avg(toFloat64OrNull(toString(properties.\$revenue))) as avg_order_value,
+  uniq(distinct_id) as unique_customers
+FROM events
+WHERE event IN ('\$purchase', 'purchase', 'order_completed', '\$revenue')
+  AND timestamp > now() - INTERVAL 30 DAY
+GROUP BY day
+ORDER BY day DESC
+'''
+        },
+      },
+      timeout: const Duration(seconds: 30),
+    );
+    return data as Map<String, dynamic>;
+  }
+
+  // -- Person Events (for person detail timeline) --
+
+  Future<List<EventItem>> fetchPersonEvents(
+    String host, String projectId, String apiKey, String distinctId, {
+    int limit = 50,
+  }) async {
+    final escaped = distinctId.replaceAll("'", "\\'");
+    final data = await _post(
+      host,
+      '/api/projects/$projectId/query/',
+      apiKey,
+      {
+        'query': {
+          'kind': 'HogQLQuery',
+          'query': "SELECT uuid, event, distinct_id, timestamp, properties "
+              "FROM events WHERE distinct_id = '$escaped' "
+              "ORDER BY timestamp DESC LIMIT $limit",
+        },
+      },
+    );
+    final results = <EventItem>[];
+    final rows = data['results'] as List? ?? [];
+    for (final row in rows) {
+      if (row is List) results.add(EventItem.fromHogQLRow(row));
+    }
+    return results;
   }
 
   void dispose() {

@@ -50,8 +50,23 @@ class _PersonsListScreenState extends State<PersonsListScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: TextField(
               controller: _searchController,
-              decoration: const InputDecoration(hintText: 'Search by email, name, or distinct ID...', prefixIcon: Icon(Icons.search, size: 20), isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 10)),
+              decoration: InputDecoration(
+                hintText: 'Search by email, name, or distinct ID...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          _loadPersons();
+                        },
+                      )
+                    : null,
+              ),
               onSubmitted: (value) => _loadPersons(search: value.isNotEmpty ? value : null),
+              onChanged: (_) => setState(() {}),
             ),
           ),
           Expanded(
@@ -61,21 +76,97 @@ class _PersonsListScreenState extends State<PersonsListScreen> {
                 if (state.error.value != null && state.persons.value.isEmpty) return ErrorView(error: state.error.value!, onRetry: _loadPersons);
                 if (state.persons.value.isEmpty) return const EmptyState(icon: Icons.person_outlined, title: 'No persons found');
 
+                final showLoadMore = state.hasMore.value;
+                final itemCount = state.persons.value.length + (showLoadMore ? 1 : 0);
+
                 return RefreshIndicator(
                   onRefresh: _loadPersons,
                   child: ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: state.persons.value.length,
+                    itemCount: itemCount,
                     itemBuilder: (context, index) {
+                      if (index >= state.persons.value.length) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Center(
+                            child: SignalBuilder(builder: (context, _) {
+                              if (state.isLoadingMore.value) {
+                                return const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2));
+                              }
+                              return TextButton(
+                                onPressed: () async {
+                                  final p = AppProviders.of(context);
+                                  final c = await p.storage.readCredentials();
+                                  if (c != null) p.personsState.loadMore(p.client, c.host, c.projectId, c.apiKey);
+                                },
+                                child: const Text('Load more persons'),
+                              );
+                            }),
+                          ),
+                        );
+                      }
                       final person = state.persons.value[index];
+                      final os = person.properties['\$os']?.toString();
+                      final browser = person.properties['\$browser']?.toString();
+                      final city = person.properties['\$geoip_city_name']?.toString();
+                      final country = person.properties['\$geoip_country_code']?.toString();
+                      final location = [city, country].where((s) => s != null && s.isNotEmpty).join(', ');
+
                       return Card(
-                        elevation: 0, color: Colors.white, margin: const EdgeInsets.only(bottom: 8),
+                        elevation: 0,
+                        margin: const EdgeInsets.only(bottom: 8),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: theme.colorScheme.onSurface.withValues(alpha: 0.08))),
-                        child: ListTile(
-                          leading: CircleAvatar(backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12), child: Text(person.initial, style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600))),
-                          title: Text(person.displayName, style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: person.email != null && person.email != person.displayName ? Text(person.email!, style: theme.textTheme.bodySmall) : null,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
                           onTap: () => context.pushNamed(RouteNames.personDetail, pathParameters: {'personId': person.id.toString()}),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+                                  child: Text(person.initial, style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600)),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        person.displayName,
+                                        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (person.email != null && person.email != person.displayName)
+                                        Text(
+                                          person.email!,
+                                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          if (location.isNotEmpty) ...[
+                                            Icon(Icons.location_on, size: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.35)),
+                                            const SizedBox(width: 2),
+                                            Text(location, style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.4))),
+                                            const SizedBox(width: 8),
+                                          ],
+                                          if (os != null) ...[
+                                            Text(os, style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.4))),
+                                            if (browser != null) Text(' / $browser', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.4))),
+                                          ],
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(Icons.chevron_right, size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+                              ],
+                            ),
+                          ),
                         ),
                       );
                     },

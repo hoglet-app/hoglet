@@ -16,11 +16,21 @@ class ActivityScreen extends StatefulWidget {
 }
 
 class _ActivityScreenState extends State<ActivityScreen> {
+  final _searchController = TextEditingController();
+  String? _eventFilter;
+  bool _showSearch = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _loadEvents();
     _loadColumns();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadEvents() async {
@@ -102,12 +112,35 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Activity'),
+        title: _showSearch
+            ? TextField(
+                controller: _searchController,
+                decoration: const InputDecoration(
+                  hintText: 'Filter by event name...',
+                  border: InputBorder.none,
+                ),
+                autofocus: true,
+                onChanged: (v) => setState(() => _eventFilter = v.isEmpty ? null : v),
+              )
+            : const Text('Activity'),
         leading: IconButton(
           icon: const Icon(Icons.menu),
           onPressed: () => Scaffold.of(context).openDrawer(),
         ),
         actions: [
+          IconButton(
+            icon: Icon(_showSearch ? Icons.close : Icons.search),
+            onPressed: () {
+              setState(() {
+                _showSearch = !_showSearch;
+                if (!_showSearch) {
+                  _searchController.clear();
+                  _eventFilter = null;
+                }
+              });
+            },
+            tooltip: _showSearch ? 'Close search' : 'Search events',
+          ),
           IconButton(
             icon: const Icon(Icons.view_column_outlined),
             onPressed: _showColumnConfig,
@@ -124,7 +157,18 @@ class _ActivityScreenState extends State<ActivityScreen> {
             return ErrorView(error: state.error.value!, onRetry: _loadEvents);
           }
 
-          final events = state.events.value;
+          var events = state.events.value;
+          if (_eventFilter != null && _eventFilter!.isNotEmpty) {
+            final filter = _eventFilter!.toLowerCase();
+            events = events.where((e) => e.event.toLowerCase().contains(filter)).toList();
+          }
+          if (events.isEmpty && state.events.value.isNotEmpty && _eventFilter != null) {
+            return const EmptyState(
+              icon: Icons.search_off,
+              title: 'No matching events',
+              message: 'Try a different search term',
+            );
+          }
           if (events.isEmpty) {
             return const EmptyState(
               icon: Icons.bolt_outlined,
@@ -135,12 +179,39 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
           final columns = state.visibleColumns.value;
 
+          // Add 1 for the "load more" footer
+          final showLoadMore = state.hasMore.value && _eventFilter == null;
+          final itemCount = events.length + (showLoadMore ? 1 : 0);
+
           return RefreshIndicator(
             onRefresh: _loadEvents,
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              itemCount: events.length,
+              itemCount: itemCount,
               itemBuilder: (context, index) {
+                if (index >= events.length) {
+                  // Load more footer
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Center(
+                      child: SignalBuilder(builder: (context, _) {
+                        if (state.isLoadingMore.value) {
+                          return const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2));
+                        }
+                        return TextButton(
+                          onPressed: () async {
+                            final p = AppProviders.of(context);
+                            final c = await p.storage.readCredentials();
+                            if (c != null) {
+                              p.eventsState.loadMoreEvents(p.client, c.host, c.projectId, c.apiKey);
+                            }
+                          },
+                          child: const Text('Load more events'),
+                        );
+                      }),
+                    ),
+                  );
+                }
                 final event = events[index];
                 return _EventCard(
                   event: event,
@@ -177,7 +248,6 @@ class _EventCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 0,
-      color: Colors.white,
       margin: const EdgeInsets.only(bottom: 6),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),

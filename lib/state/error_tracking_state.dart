@@ -24,5 +24,13 @@ class ErrorTrackingState {
     finally { isLoadingDetail.value = false; }
   }
 
+  Future<void> updateStatus(PosthogClient client, String host, String projectId, String apiKey, String errorId, String status) async {
+    final updated = await client.updateErrorStatus(host, projectId, apiKey, errorId, status);
+    errorDetail.value = updated;
+    final current = List<ErrorGroup>.from(errors.value);
+    final idx = current.indexWhere((e) => e.id == errorId);
+    if (idx != -1) { current[idx] = updated; errors.value = current; }
+  }
+
   void dispose() { errors.dispose(); errorDetail.dispose(); isLoading.dispose(); isLoadingDetail.dispose(); error.dispose(); detailError.dispose(); }
 }

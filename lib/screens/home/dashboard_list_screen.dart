@@ -19,6 +19,7 @@ class DashboardListScreen extends StatefulWidget {
 class _DashboardListScreenState extends State<DashboardListScreen> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  String? _tagFilter;
 
   @override
   void didChangeDependencies() {
@@ -53,8 +54,14 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
       final query = _searchQuery.toLowerCase();
       result = result.where((d) {
         return d.name.toLowerCase().contains(query) ||
-            (d.description?.toLowerCase().contains(query) ?? false);
+            (d.description?.toLowerCase().contains(query) ?? false) ||
+            d.tags.any((t) => t.toLowerCase().contains(query));
       }).toList();
+    }
+
+    // Filter by tag
+    if (_tagFilter != null) {
+      result = result.where((d) => d.tags.contains(_tagFilter)).toList();
     }
 
     // Sort: pinned first, then by last modified
@@ -67,6 +74,14 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
     });
 
     return result;
+  }
+
+  Set<String> _allTags(List<Dashboard> dashboards) {
+    final tags = <String>{};
+    for (final d in dashboards) {
+      tags.addAll(d.tags);
+    }
+    return tags;
   }
 
   @override
@@ -106,6 +121,45 @@ class _DashboardListScreenState extends State<DashboardListScreen> {
               onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
+          // Tag filter chips
+          SignalBuilder(builder: (context, _) {
+            final tags = _allTags(state.dashboards.value);
+            if (tags.isEmpty) return const SizedBox.shrink();
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      onTap: () => setState(() => _tagFilter = null),
+                      child: Chip(
+                        label: Text('All', style: TextStyle(fontSize: 12, color: _tagFilter == null ? Colors.white : null, fontWeight: _tagFilter == null ? FontWeight.w600 : FontWeight.normal)),
+                        backgroundColor: _tagFilter == null ? Theme.of(context).colorScheme.primary : null,
+                        padding: EdgeInsets.zero,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ),
+                  for (final tag in tags)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: GestureDetector(
+                        onTap: () => setState(() => _tagFilter = _tagFilter == tag ? null : tag),
+                        child: Chip(
+                          label: Text(tag, style: TextStyle(fontSize: 12, color: _tagFilter == tag ? Colors.white : null, fontWeight: _tagFilter == tag ? FontWeight.w600 : FontWeight.normal)),
+                          backgroundColor: _tagFilter == tag ? Theme.of(context).colorScheme.primary : null,
+                          padding: EdgeInsets.zero,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 4),
           // Dashboard list
           Expanded(
             child: SignalBuilder(
@@ -174,7 +228,6 @@ class _DashboardCard extends StatelessWidget {
 
     return Card(
       elevation: 0,
-      color: Colors.white,
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
@@ -182,37 +235,67 @@ class _DashboardCard extends StatelessWidget {
           color: theme.colorScheme.onSurface.withValues(alpha: 0.08),
         ),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: dashboard.pinned
-            ? Icon(Icons.push_pin, color: theme.colorScheme.primary, size: 20)
-            : const Icon(Icons.dashboard_outlined, size: 20),
-        title: Text(
-          dashboard.name,
-          style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: dashboard.description != null && dashboard.description!.isNotEmpty
-            ? Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  dashboard.description!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (dashboard.pinned)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Icon(Icons.push_pin, color: theme.colorScheme.primary, size: 16),
+                    ),
+                  Expanded(
+                    child: Text(
+                      dashboard.name,
+                      style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    '${dashboard.tileCount} tiles',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                  ),
+                ],
+              ),
+              if (dashboard.description != null && dashboard.description!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    dashboard.description!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
                   ),
                 ),
-              )
-            : null,
-        trailing: Text(
-          '${dashboard.tileCount} tiles',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+              if (dashboard.tags.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: dashboard.tags.take(5).map((tag) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(tag, style: TextStyle(fontSize: 10, color: theme.colorScheme.primary)),
+                  )).toList(),
+                ),
+              ],
+            ],
           ),
         ),
-        onTap: onTap,
       ),
     );
   }

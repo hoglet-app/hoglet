@@ -7,6 +7,7 @@ import '../../models/insight.dart';
 import '../../routing/route_names.dart';
 import '../../widgets/error_view.dart';
 import '../../widgets/insight_card.dart';
+import '../../widgets/open_in_posthog.dart';
 import '../../widgets/shimmer_list.dart';
 
 class DashboardDetailScreen extends StatefulWidget {
@@ -96,6 +97,9 @@ class _DashboardDetailScreenState extends State<DashboardDetailScreen> {
         return Scaffold(
           appBar: AppBar(
             title: Text(dashboard?.name ?? 'Dashboard'),
+            actions: [
+              OpenInPostHogButton(path: '/dashboard/${widget.dashboardId}'),
+            ],
           ),
           body: () {
             if (isLoading && dashboard == null) {
@@ -108,26 +112,48 @@ class _DashboardDetailScreenState extends State<DashboardDetailScreen> {
               return const Center(child: Text('Dashboard not found'));
             }
 
-            final insightTiles =
-                dashboard.tiles.where((t) => t.isInsight).toList();
+            final tiles = dashboard.tiles;
 
-            if (insightTiles.isEmpty) {
-              return const Center(child: Text('No insight tiles'));
+            if (tiles.isEmpty) {
+              return const Center(child: Text('No tiles on this dashboard'));
             }
 
             return RefreshIndicator(
               onRefresh: _loadDashboard,
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
-                itemCount: insightTiles.length,
+                itemCount: tiles.length,
                 itemBuilder: (context, index) {
-                  final tile = insightTiles[index];
-                  final insight = _insights[tile.insightId];
+                  final tile = tiles[index];
 
+                  // Text tile
+                  if (tile.isText) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            tile.text ?? '',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  // Insight tile
+                  if (!tile.isInsight) return const SizedBox.shrink();
+
+                  final insight = _insights[tile.insightId];
                   if (insight == null) {
                     return Card(
                       elevation: 0,
-                      color: Colors.white,
                       margin: const EdgeInsets.only(bottom: 12),
                       child: SizedBox(
                         height: 160,

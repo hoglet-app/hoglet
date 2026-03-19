@@ -1,14 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../screens/actions/actions_list_screen.dart';
 import '../screens/activity/activity_screen.dart';
 import '../screens/alerts/alert_detail_screen.dart';
 import '../screens/alerts/alerts_list_screen.dart';
+import '../screens/annotations/annotations_list_screen.dart';
 import '../screens/cohorts/cohort_detail_screen.dart';
 import '../screens/cohorts/cohorts_list_screen.dart';
+import '../screens/data_management/data_management_screen.dart';
+import '../screens/early_access/early_access_list_screen.dart';
 import '../screens/error_tracking/error_detail_screen.dart';
 import '../screens/error_tracking/error_list_screen.dart';
+import '../screens/groups/groups_screen.dart';
+import '../screens/llm_analytics/llm_analytics_screen.dart';
+import '../screens/logs/logs_screen.dart';
+import '../screens/product_tours/product_tours_list_screen.dart';
+import '../screens/revenue_analytics/revenue_analytics_screen.dart';
 import '../screens/recordings/recordings_list_screen.dart';
+import '../screens/sql_editor/sql_editor_screen.dart';
 import '../screens/web_analytics/web_analytics_screen.dart';
 import '../screens/experiments/experiment_detail_screen.dart';
 import '../screens/experiments/experiments_list_screen.dart';
@@ -237,6 +247,66 @@ GoRouter createAppRouter(StorageService storage) => GoRouter(
       name: RouteNames.recordings,
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const RecordingsListScreen(),
+    ),
+    GoRoute(
+      path: RoutePaths.sqlEditor,
+      name: RouteNames.sqlEditor,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const SqlEditorScreen(),
+    ),
+    GoRoute(
+      path: RoutePaths.annotations,
+      name: RouteNames.annotations,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const AnnotationsListScreen(),
+    ),
+    GoRoute(
+      path: RoutePaths.actions,
+      name: RouteNames.actions,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const ActionsListScreen(),
+    ),
+    GoRoute(
+      path: RoutePaths.dataManagement,
+      name: RouteNames.dataManagement,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const DataManagementScreen(),
+    ),
+    GoRoute(
+      path: RoutePaths.groups,
+      name: RouteNames.groups,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const GroupsScreen(),
+    ),
+    GoRoute(
+      path: RoutePaths.earlyAccess,
+      name: RouteNames.earlyAccess,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const EarlyAccessListScreen(),
+    ),
+    GoRoute(
+      path: RoutePaths.productTours,
+      name: RouteNames.productTours,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const ProductToursListScreen(),
+    ),
+    GoRoute(
+      path: RoutePaths.logs,
+      name: RouteNames.logs,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const LogsScreen(),
+    ),
+    GoRoute(
+      path: RoutePaths.llmAnalytics,
+      name: RouteNames.llmAnalytics,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const LlmAnalyticsScreen(),
+    ),
+    GoRoute(
+      path: RoutePaths.revenueAnalytics,
+      name: RouteNames.revenueAnalytics,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const RevenueAnalyticsScreen(),
     ),
   ],
 );

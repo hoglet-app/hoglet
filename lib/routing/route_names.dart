@@ -33,6 +33,14 @@ abstract class RouteNames {
   static const webAnalytics = 'webAnalytics';
   static const sqlEditor = 'sqlEditor';
   static const annotations = 'annotations';
+  static const actions = 'actions';
+  static const dataManagement = 'dataManagement';
+  static const groups = 'groups';
+  static const earlyAccess = 'earlyAccess';
+  static const productTours = 'productTours';
+  static const logs = 'logs';
+  static const llmAnalytics = 'llmAnalytics';
+  static const revenueAnalytics = 'revenueAnalytics';
 }
 
 abstract class RoutePaths {
@@ -70,4 +78,12 @@ abstract class RoutePaths {
   static const webAnalytics = '/web-analytics';
   static const sqlEditor = '/sql';
   static const annotations = '/annotations';
+  static const actions = '/actions';
+  static const dataManagement = '/data-management';
+  static const groups = '/groups';
+  static const earlyAccess = '/early-access';
+  static const productTours = '/product-tours';
+  static const logs = '/logs';
+  static const llmAnalytics = '/llm-analytics';
+  static const revenueAnalytics = '/revenue-analytics';
 }

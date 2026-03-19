@@ -10,11 +10,14 @@ import '../services/storage_service.dart';
 class EventsState {
   final events = Signal<List<EventItem>>([]);
   final isLoading = Signal(false);
+  final isLoadingMore = Signal(false);
+  final hasMore = Signal(true);
   final error = Signal<Object?>(null);
   final visibleColumns = Signal<List<ColumnSpec>>(ColumnSpec.defaultColumns);
   final availableProperties = Signal<List<String>>([]);
 
   static const _columnsStorageKey = 'events_visible_columns';
+  static const _pageSize = 100;
 
   Future<void> fetchEvents(
     PosthogClient client,
@@ -24,12 +27,42 @@ class EventsState {
   ) async {
     isLoading.value = true;
     error.value = null;
+    hasMore.value = true;
     try {
-      events.value = await client.fetchEvents(host, projectId, apiKey);
+      final result = await client.fetchEvents(host, projectId, apiKey, limit: _pageSize);
+      events.value = result;
+      hasMore.value = result.length >= _pageSize;
     } catch (e) {
       error.value = e;
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  Future<void> loadMoreEvents(
+    PosthogClient client,
+    String host,
+    String projectId,
+    String apiKey,
+  ) async {
+    if (isLoadingMore.value || !hasMore.value || events.value.isEmpty) return;
+    isLoadingMore.value = true;
+    try {
+      final lastTimestamp = events.value.last.timestamp;
+      final olderEvents = await client.fetchEvents(host, projectId, apiKey, limit: _pageSize);
+      // Filter to only events older than current last
+      final newEvents = olderEvents.where((e) =>
+        e.timestamp.isBefore(lastTimestamp)
+      ).toList();
+      if (newEvents.isEmpty) {
+        hasMore.value = false;
+      } else {
+        events.value = [...events.value, ...newEvents];
+      }
+    } catch (_) {
+      // Non-critical
+    } finally {
+      isLoadingMore.value = false;
     }
   }
 
@@ -100,6 +133,8 @@ class EventsState {
   void dispose() {
     events.dispose();
     isLoading.dispose();
+    isLoadingMore.dispose();
+    hasMore.dispose();
     error.dispose();
     visibleColumns.dispose();
     availableProperties.dispose();

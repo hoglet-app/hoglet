@@ -5,7 +5,12 @@ class FeatureFlag {
   final bool active;
   final int? rolloutPercentage;
   final List<ReleaseCondition> releaseConditions;
+  final List<FlagVariant> variants;
+  final bool isMultivariate;
+  final List<String> tags;
   final DateTime? createdAt;
+  final String? createdByName;
+  final bool ensureExperiencesContinuity;
   final Map<String, dynamic> raw;
 
   FeatureFlag({
@@ -15,7 +20,12 @@ class FeatureFlag {
     required this.active,
     this.rolloutPercentage,
     this.releaseConditions = const [],
+    this.variants = const [],
+    this.isMultivariate = false,
+    this.tags = const [],
     this.createdAt,
+    this.createdByName,
+    this.ensureExperiencesContinuity = false,
     this.raw = const {},
   });
 
@@ -36,6 +46,16 @@ class FeatureFlag {
       rollout = conditions.first.rolloutPercentage;
     }
 
+    // Parse multivariate variants
+    final variants = <FlagVariant>[];
+    final multiVariate = filtersJson['multivariate'] as Map<String, dynamic>?;
+    final variantsList = multiVariate?['variants'] as List? ?? [];
+    for (final v in variantsList) {
+      if (v is Map<String, dynamic>) variants.add(FlagVariant.fromJson(v));
+    }
+
+    final createdBy = json['created_by'] as Map<String, dynamic>?;
+
     return FeatureFlag(
       id: json['id'] as int,
       key: json['key']?.toString() ?? '',
@@ -43,7 +63,12 @@ class FeatureFlag {
       active: json['active'] == true,
       rolloutPercentage: rollout,
       releaseConditions: conditions,
+      variants: variants,
+      isMultivariate: variants.isNotEmpty,
+      tags: (json['tags'] as List?)?.map((t) => t.toString()).toList() ?? [],
       createdAt: _parseDate(json['created_at']),
+      createdByName: createdBy?['first_name']?.toString(),
+      ensureExperiencesContinuity: json['ensure_experience_continuity'] == true,
       raw: json,
     );
   }
@@ -58,8 +83,29 @@ class FeatureFlag {
       active: active ?? this.active,
       rolloutPercentage: rolloutPercentage,
       releaseConditions: releaseConditions,
+      variants: variants,
+      isMultivariate: isMultivariate,
+      tags: tags,
       createdAt: createdAt,
+      createdByName: createdByName,
+      ensureExperiencesContinuity: ensureExperiencesContinuity,
       raw: raw,
+    );
+  }
+}
+
+class FlagVariant {
+  final String key;
+  final String? name;
+  final int rolloutPercentage;
+
+  FlagVariant({required this.key, this.name, this.rolloutPercentage = 0});
+
+  factory FlagVariant.fromJson(Map<String, dynamic> json) {
+    return FlagVariant(
+      key: json['key']?.toString() ?? '',
+      name: json['name']?.toString(),
+      rolloutPercentage: (json['rollout_percentage'] as num?)?.toInt() ?? 0,
     );
   }
 }

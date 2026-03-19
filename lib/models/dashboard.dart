@@ -3,6 +3,7 @@ class Dashboard {
   final String name;
   final String? description;
   final bool pinned;
+  final List<String> tags;
   final DateTime? createdAt;
   final DateTime? lastModifiedAt;
   final List<DashboardTile> tiles;
@@ -13,6 +14,7 @@ class Dashboard {
     required this.name,
     this.description,
     this.pinned = false,
+    this.tags = const [],
     this.createdAt,
     this.lastModifiedAt,
     this.tiles = const [],
@@ -33,6 +35,7 @@ class Dashboard {
       name: json['name']?.toString() ?? 'Untitled',
       description: json['description']?.toString(),
       pinned: json['pinned'] == true,
+      tags: (json['tags'] as List?)?.map((t) => t.toString()).toList() ?? [],
       createdAt: _parseDate(json['created_at']),
       lastModifiedAt: _parseDate(json['last_modified_at']),
       tiles: tiles,

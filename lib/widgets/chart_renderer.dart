@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/insight.dart';
 import 'breakdown_legend.dart';
 import 'lifecycle_chart.dart';
+import 'paths_chart.dart';
 import 'retention_table.dart';
 import 'stickiness_chart.dart';
 
@@ -36,6 +37,8 @@ class ChartRenderer extends StatelessWidget {
         return LifecycleChart(result: insight.result!, height: height);
       case InsightDisplayType.stickiness:
         return StickinessChart(result: insight.result!, height: height);
+      case InsightDisplayType.paths:
+        return PathsChart(resultData: insight.raw['result'], height: height);
       default:
         return _UnsupportedChart(insight: insight, height: height);
     }

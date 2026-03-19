@@ -76,7 +76,7 @@ class _InsightsListScreenState extends State<InsightsListScreen> {
             child: Row(
               children: [
                 _FilterChip(label: 'All', selected: _typeFilter == null, onTap: () => setState(() => _typeFilter = null)),
-                for (final type in [InsightDisplayType.trends, InsightDisplayType.funnels, InsightDisplayType.retention, InsightDisplayType.lifecycle, InsightDisplayType.stickiness, InsightDisplayType.number])
+                for (final type in [InsightDisplayType.trends, InsightDisplayType.funnels, InsightDisplayType.retention, InsightDisplayType.paths, InsightDisplayType.lifecycle, InsightDisplayType.stickiness, InsightDisplayType.number])
                   _FilterChip(label: type.name[0].toUpperCase() + type.name.substring(1), selected: _typeFilter == type, onTap: () => setState(() => _typeFilter = type)),
               ],
             ),
@@ -97,7 +97,7 @@ class _InsightsListScreenState extends State<InsightsListScreen> {
                   itemBuilder: (context, index) {
                     final insight = insights[index];
                     return Card(
-                      elevation: 0, color: Colors.white, margin: const EdgeInsets.only(bottom: 8),
+                      elevation: 0, margin: const EdgeInsets.only(bottom: 8),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: theme.colorScheme.onSurface.withValues(alpha: 0.08))),
                       child: ListTile(
                         leading: Icon(_typeIcon(insight.displayType), size: 22),

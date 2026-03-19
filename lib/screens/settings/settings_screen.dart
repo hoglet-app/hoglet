@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../di/providers.dart';
 import '../../routing/route_names.dart';
@@ -14,6 +15,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   String? _host;
   String? _projectId;
+  String? _projectName;
   bool _loading = true;
 
   @override
@@ -23,12 +25,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final storage = AppProviders.of(context).storage;
-    final credentials = await storage.readCredentials();
+    final p = AppProviders.of(context);
+    final credentials = await p.storage.readCredentials();
+    String? projectName;
+    if (credentials != null) {
+      try {
+        final projects = await p.client.fetchProjects(credentials.host, credentials.apiKey);
+        final match = projects.where((proj) => proj['id']?.toString() == credentials.projectId).toList();
+        if (match.isNotEmpty) {
+          projectName = match.first['name']?.toString();
+        }
+      } catch (_) {}
+    }
     if (mounted) {
       setState(() {
         _host = credentials?.host;
         _projectId = credentials?.projectId;
+        _projectName = projectName;
         _loading = false;
       });
     }
@@ -41,24 +54,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('Sign Out'),
         content: const Text('This will clear your connection settings. Continue?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Sign Out'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sign Out')),
         ],
       ),
     );
 
     if (confirmed == true && mounted) {
       await AppProviders.of(context).storage.clearCredentials();
-      if (mounted) {
-        context.goNamed(RouteNames.welcome);
-      }
+      if (mounted) context.goNamed(RouteNames.welcome);
     }
+  }
+
+  Future<void> _openPostHog() async {
+    if (_host == null) return;
+    await launchUrl(Uri.parse(_host!), mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -77,23 +87,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
-                _SectionHeader('CONNECTION'),
+                _SectionHeader('PROJECT'),
+                if (_projectName != null)
+                  ListTile(
+                    leading: const Icon(Icons.folder_open),
+                    title: const Text('Project'),
+                    subtitle: Text(_projectName!),
+                  ),
                 ListTile(
                   leading: const Icon(Icons.cloud),
                   title: const Text('Host'),
                   subtitle: Text(_host ?? 'Not connected'),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.folder),
+                  leading: const Icon(Icons.tag),
                   title: const Text('Project ID'),
                   subtitle: Text(_projectId ?? 'Not set'),
                 ),
+                if (_host != null)
+                  ListTile(
+                    leading: const Icon(Icons.open_in_new),
+                    title: const Text('Open PostHog Web'),
+                    subtitle: Text(_host!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
+                    onTap: _openPostHog,
+                  ),
+                const Divider(),
+                _SectionHeader('APPEARANCE'),
+                SwitchListTile(
+                  secondary: Icon(
+                    AppProviders.of(context).themeMode == ThemeMode.dark
+                        ? Icons.dark_mode
+                        : Icons.light_mode,
+                  ),
+                  title: const Text('Dark Mode'),
+                  value: AppProviders.of(context).themeMode == ThemeMode.dark,
+                  onChanged: (_) => AppProviders.of(context).onToggleTheme(),
+                ),
                 const Divider(),
                 _SectionHeader('ABOUT'),
+                const ListTile(
+                  leading: Icon(Icons.info_outline),
+                  title: Text('Hoglet'),
+                  subtitle: Text('v1.0.0 — PostHog Mobile Client'),
+                ),
                 ListTile(
-                  leading: const Icon(Icons.info_outline),
-                  title: const Text('Hoglet'),
-                  subtitle: const Text('v1.0.0 — PostHog Mobile Client'),
+                  leading: const Icon(Icons.code),
+                  title: const Text('Features'),
+                  subtitle: Text(
+                    'Dashboards, Insights, Flags, Experiments, Surveys, '
+                    'Persons, Cohorts, Groups, Error Tracking, Alerts, '
+                    'Web Analytics, Revenue Analytics, LLM Analytics, '
+                    'Session Replay, SQL Editor, Annotations, and more',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                  ),
                 ),
                 const Divider(),
                 Padding(
@@ -108,6 +156,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 32),
               ],
             ),
     );

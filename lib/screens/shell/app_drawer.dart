@@ -32,6 +32,11 @@ class AppDrawer extends StatelessWidget {
             label: 'Web Analytics',
             onTap: () => _navigateToRoute(context, '/web-analytics'),
           ),
+          _DrawerItem(
+            icon: Icons.attach_money,
+            label: 'Revenue Analytics',
+            onTap: () => _navigateToRoute(context, '/revenue-analytics'),
+          ),
           _SectionHeader('DATA'),
           _DrawerItem(
             icon: Icons.bolt,
@@ -48,6 +53,11 @@ class AppDrawer extends StatelessWidget {
             label: 'Cohorts',
             onTap: () => _navigateToRoute(context, '/cohorts'),
           ),
+          _DrawerItem(
+            icon: Icons.groups,
+            label: 'Groups',
+            onTap: () => _navigateToRoute(context, '/groups'),
+          ),
           _SectionHeader('FEATURE MANAGEMENT'),
           _DrawerItem(
             icon: Icons.flag,
@@ -63,6 +73,16 @@ class AppDrawer extends StatelessWidget {
             icon: Icons.assignment,
             label: 'Surveys',
             onTap: () => _navigateToRoute(context, '/surveys'),
+          ),
+          _DrawerItem(
+            icon: Icons.new_releases,
+            label: 'Early Access Features',
+            onTap: () => _navigateToRoute(context, '/early-access'),
+          ),
+          _DrawerItem(
+            icon: Icons.tour,
+            label: 'Product Tours',
+            onTap: () => _navigateToRoute(context, '/product-tours'),
           ),
           _SectionHeader('MONITORING'),
           _DrawerItem(
@@ -86,16 +106,37 @@ class AppDrawer extends StatelessWidget {
             isLinkOut: true,
             onTap: () => _launchPostHogUrl(context, '/heatmaps'),
           ),
+          _SectionHeader('AI & ANALYTICS'),
+          _DrawerItem(
+            icon: Icons.smart_toy,
+            label: 'LLM Analytics',
+            onTap: () => _navigateToRoute(context, '/llm-analytics'),
+          ),
+          _DrawerItem(
+            icon: Icons.article,
+            label: 'Logs',
+            onTap: () => _navigateToRoute(context, '/logs'),
+          ),
           _SectionHeader('DATA & TOOLS'),
+          _DrawerItem(
+            icon: Icons.storage,
+            label: 'Data Management',
+            onTap: () => _navigateToRoute(context, '/data-management'),
+          ),
+          _DrawerItem(
+            icon: Icons.touch_app,
+            label: 'Actions',
+            onTap: () => _navigateToRoute(context, '/actions'),
+          ),
           _DrawerItem(
             icon: Icons.code,
             label: 'SQL Editor',
-            onTap: () => _showComingSoon(context, 'SQL Editor'),
+            onTap: () => _navigateToRoute(context, '/sql'),
           ),
           _DrawerItem(
             icon: Icons.edit_note,
             label: 'Annotations',
-            onTap: () => _showComingSoon(context, 'Annotations'),
+            onTap: () => _navigateToRoute(context, '/annotations'),
           ),
           _DrawerItem(
             icon: Icons.sync_alt,
@@ -144,15 +185,6 @@ class AppDrawer extends StatelessWidget {
     await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
-  void _showComingSoon(BuildContext context, String feature) {
-    Navigator.of(context).pop(); // close drawer
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$feature — coming soon'),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
 }
 
 class _DrawerHeader extends StatelessWidget {

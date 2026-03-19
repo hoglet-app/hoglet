@@ -6,6 +6,7 @@ import '../../widgets/chart_renderer.dart';
 import '../../widgets/breakdown_legend.dart';
 import '../../widgets/error_view.dart';
 import '../../widgets/filter_summary.dart';
+import '../../widgets/open_in_posthog.dart';
 import '../../widgets/shimmer_list.dart';
 
 class InsightDetailScreen extends StatefulWidget {
@@ -54,6 +55,9 @@ class _InsightDetailScreenState extends State<InsightDetailScreen> {
         return Scaffold(
           appBar: AppBar(
             title: Text(insight?.name ?? 'Insight'),
+            actions: [
+              OpenInPostHogButton(path: '/insights/${widget.insightId}'),
+            ],
           ),
           body: () {
             if (isLoading && insight == null) {
