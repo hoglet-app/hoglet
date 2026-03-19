@@ -6,6 +6,8 @@ class WebAnalyticsState {
   final topPages = Signal<List<List<dynamic>>>([]);
   final topReferrers = Signal<List<List<dynamic>>>([]);
   final topBrowsers = Signal<List<List<dynamic>>>([]);
+  final topDevices = Signal<List<List<dynamic>>>([]);
+  final dailyVisitors = Signal<List<List<dynamic>>>([]);
   final isLoading = Signal(false);
   final error = Signal<Object?>(null);
 
@@ -24,14 +26,18 @@ class WebAnalyticsState {
         client.fetchTopPages(host, projectId, apiKey),
         client.fetchTopReferrers(host, projectId, apiKey),
         client.fetchTopBrowsers(host, projectId, apiKey),
+        client.fetchDailyVisitors(host, projectId, apiKey),
+        client.fetchTopDevices(host, projectId, apiKey),
       ]);
       topPages.value = results[0];
       topReferrers.value = results[1];
       topBrowsers.value = results[2];
+      dailyVisitors.value = results[3];
+      topDevices.value = results[4];
     } catch (_) {
       // Non-critical — main metrics already loaded
     }
   }
 
-  void dispose() { data.dispose(); topPages.dispose(); topReferrers.dispose(); topBrowsers.dispose(); isLoading.dispose(); error.dispose(); }
+  void dispose() { data.dispose(); topPages.dispose(); topReferrers.dispose(); topBrowsers.dispose(); topDevices.dispose(); dailyVisitors.dispose(); isLoading.dispose(); error.dispose(); }
 }

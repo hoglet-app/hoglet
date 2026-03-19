@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_solidart/flutter_solidart.dart';
 import '../../di/providers.dart';
@@ -59,38 +60,37 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen> {
                 ],
               ),
 
+              // Daily visitors chart
+              if (state.dailyVisitors.value.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                _DailyVisitorsChart(data: state.dailyVisitors.value, theme: theme),
+              ],
+
+              // Referrer bar chart
+              if (state.topReferrers.value.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                _ReferrerBarChart(data: state.topReferrers.value, theme: theme),
+              ],
+
               // Top Pages
               const SizedBox(height: 24),
-              _SectionTable(
-                title: 'TOP PAGES',
-                icon: Icons.description,
-                rows: state.topPages.value,
-                nameLabel: 'Page',
-                valueLabel: 'Views',
-                theme: theme,
-              ),
+              _SectionTable(title: 'TOP PAGES', icon: Icons.description, rows: state.topPages.value, nameLabel: 'Page', valueLabel: 'Views', theme: theme),
 
-              // Top Referrers
-              const SizedBox(height: 24),
-              _SectionTable(
-                title: 'TOP REFERRERS',
-                icon: Icons.link,
-                rows: state.topReferrers.value,
-                nameLabel: 'Referrer',
-                valueLabel: 'Views',
-                theme: theme,
-              ),
-
-              // Top Browsers
-              const SizedBox(height: 24),
-              _SectionTable(
-                title: 'BROWSERS',
-                icon: Icons.web,
-                rows: state.topBrowsers.value,
-                nameLabel: 'Browser',
-                valueLabel: 'Views',
-                theme: theme,
-              ),
+              // Browsers & Devices side by side
+              if (state.topBrowsers.value.isNotEmpty || state.topDevices.value.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (state.topBrowsers.value.isNotEmpty)
+                      Expanded(child: _MiniBreakdown(title: 'BROWSERS', icon: Icons.web, rows: state.topBrowsers.value, theme: theme)),
+                    if (state.topBrowsers.value.isNotEmpty && state.topDevices.value.isNotEmpty)
+                      const SizedBox(width: 12),
+                    if (state.topDevices.value.isNotEmpty)
+                      Expanded(child: _MiniBreakdown(title: 'DEVICES', icon: Icons.devices, rows: state.topDevices.value, theme: theme)),
+                  ],
+                ),
+              ],
             ],
           ),
         );
@@ -106,6 +106,281 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen> {
     return n.toString();
   }
 }
+
+// -- Daily Visitors Line Chart --
+
+class _DailyVisitorsChart extends StatelessWidget {
+  final List<List<dynamic>> data;
+  final ThemeData theme;
+  const _DailyVisitorsChart({required this.data, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    final spots = <FlSpot>[];
+    final labels = <String>[];
+    for (var i = 0; i < data.length; i++) {
+      final row = data[i];
+      final visitors = row.length > 1 ? (row[1] as num?)?.toDouble() ?? 0 : 0.0;
+      spots.add(FlSpot(i.toDouble(), visitors));
+      final dateStr = row.isNotEmpty ? row[0]?.toString() ?? '' : '';
+      labels.add(_shortDate(dateStr));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.show_chart, size: 16, color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+            const SizedBox(width: 6),
+            Text('DAILY VISITORS', style: theme.textTheme.labelSmall?.copyWith(
+              letterSpacing: 1.2, color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+            )),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: theme.colorScheme.onSurface.withValues(alpha: 0.06)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 16, 16, 8),
+            child: SizedBox(
+              height: 160,
+              child: LineChart(LineChartData(
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: spots,
+                    color: theme.colorScheme.primary,
+                    barWidth: 2.5,
+                    isCurved: true,
+                    curveSmoothness: 0.3,
+                    dotData: FlDotData(show: spots.length <= 10),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                    ),
+                  ),
+                ],
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (v) => FlLine(color: theme.colorScheme.onSurface.withValues(alpha: 0.06), strokeWidth: 1),
+                ),
+                titlesData: FlTitlesData(
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  leftTitles: AxisTitles(sideTitles: SideTitles(
+                    showTitles: true, reservedSize: 40,
+                    getTitlesWidget: (v, _) => Text(_fmtNum(v.toInt()), style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.4))),
+                  )),
+                  bottomTitles: AxisTitles(sideTitles: SideTitles(
+                    showTitles: true, reservedSize: 24,
+                    getTitlesWidget: (v, _) {
+                      final i = v.toInt();
+                      if (i < 0 || i >= labels.length) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(labels[i], style: TextStyle(fontSize: 9, color: theme.colorScheme.onSurface.withValues(alpha: 0.4))),
+                      );
+                    },
+                  )),
+                ),
+                borderData: FlBorderData(show: false),
+              )),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _shortDate(String iso) {
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return iso;
+    const months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${dt.day} ${months[dt.month]}';
+  }
+
+  String _fmtNum(int n) {
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
+    return n.toString();
+  }
+}
+
+// -- Referrer Horizontal Bar Chart --
+
+class _ReferrerBarChart extends StatelessWidget {
+  final List<List<dynamic>> data;
+  final ThemeData theme;
+  const _ReferrerBarChart({required this.data, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    final maxVal = data.isNotEmpty && data.first.length > 1
+        ? (data.first[1] as num?)?.toDouble() ?? 1 : 1.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.link, size: 16, color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+            const SizedBox(width: 6),
+            Text('REFERRING DOMAINS', style: theme.textTheme.labelSmall?.copyWith(
+              letterSpacing: 1.2, color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+            )),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: theme.colorScheme.onSurface.withValues(alpha: 0.06)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: data.asMap().entries.map((entry) {
+                final row = entry.value;
+                final name = row.isNotEmpty ? row[0]?.toString() ?? '' : '';
+                final val = row.length > 1 ? (row[1] as num?)?.toDouble() ?? 0 : 0.0;
+                final fraction = maxVal > 0 ? val / maxVal : 0.0;
+                final color = _barColor(entry.key);
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              name.isEmpty ? '(direct / none)' : name,
+                              style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            _fmtNum(val.toInt()),
+                            style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: color),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: fraction,
+                          minHeight: 8,
+                          backgroundColor: color.withValues(alpha: 0.08),
+                          valueColor: AlwaysStoppedAnimation(color),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _barColor(int index) {
+    const colors = [
+      Color(0xFF4C6EF5), // blue
+      Color(0xFF12B886), // teal
+      Color(0xFFF59F00), // yellow
+      Color(0xFFFA5252), // red
+      Color(0xFF7950F2), // violet
+      Color(0xFFFF922B), // orange
+      Color(0xFF20C997), // cyan
+      Color(0xFFE64980), // pink
+      Color(0xFF5C7CFA), // indigo
+      Color(0xFF82C91E), // lime
+    ];
+    return colors[index % colors.length];
+  }
+
+  String _fmtNum(int n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
+    return n.toString();
+  }
+}
+
+// -- Mini Breakdown (browsers/devices) --
+
+class _MiniBreakdown extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final List<List<dynamic>> rows;
+  final ThemeData theme;
+  const _MiniBreakdown({required this.title, required this.icon, required this.rows, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = rows.fold<int>(0, (sum, r) => sum + ((r.length > 1 ? r[1] as num? : 0)?.toInt() ?? 0));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 14, color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+            const SizedBox(width: 4),
+            Text(title, style: theme.textTheme.labelSmall?.copyWith(
+              letterSpacing: 1.2, color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+            )),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: theme.colorScheme.onSurface.withValues(alpha: 0.06)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: rows.take(5).map((row) {
+                final name = row.isNotEmpty ? row[0]?.toString() ?? '' : '';
+                final val = row.length > 1 ? (row[1] as num?)?.toInt() ?? 0 : 0;
+                final pct = total > 0 ? (val / total * 100).toStringAsFixed(0) : '0';
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(name.isEmpty ? 'Other' : name, style: theme.textTheme.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      Text('$pct%', style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: theme.colorScheme.primary)),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// -- Summary Metric Card --
 
 class _MetricCard extends StatelessWidget {
   final String label;
@@ -138,6 +413,8 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
+// -- Section Table (for top pages) --
+
 class _SectionTable extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -160,8 +437,7 @@ class _SectionTable extends StatelessWidget {
     if (rows.isEmpty) return const SizedBox.shrink();
 
     final maxVal = rows.isNotEmpty && rows.first.length > 1
-        ? (rows.first[1] as num?)?.toDouble() ?? 1
-        : 1.0;
+        ? (rows.first[1] as num?)?.toDouble() ?? 1 : 1.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -184,7 +460,6 @@ class _SectionTable extends StatelessWidget {
           ),
           child: Column(
             children: [
-              // Header row
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                 child: Row(
@@ -195,8 +470,7 @@ class _SectionTable extends StatelessWidget {
                 ),
               ),
               const Divider(height: 1),
-              ...rows.asMap().entries.map((entry) {
-                final row = entry.value;
+              ...rows.map((row) {
                 final name = row.isNotEmpty ? row[0]?.toString() ?? '' : '';
                 final val = row.length > 1 ? (row[1] as num?)?.toInt() ?? 0 : 0;
                 final fraction = maxVal > 0 ? val / maxVal : 0.0;
@@ -207,18 +481,8 @@ class _SectionTable extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Expanded(
-                            child: Text(
-                              name.isEmpty ? '(direct)' : name,
-                              style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Text(
-                            _formatNum(val),
-                            style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: theme.colorScheme.primary),
-                          ),
+                          Expanded(child: Text(name.isEmpty ? '/' : name, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                          Text(_formatNum(val), style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: theme.colorScheme.primary)),
                         ],
                       ),
                       const SizedBox(height: 4),
