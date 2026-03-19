@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../di/providers.dart';
 import '../../models/host_mode.dart';
 import '../../services/storage_service.dart';
 
@@ -11,7 +12,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _storage = StorageService();
+  StorageService? _storage;
 
   final _customHostController = TextEditingController();
   final _projectIdController = TextEditingController();
@@ -20,11 +21,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   HostMode _hostMode = HostMode.us;
   bool _showApiKey = false;
   bool _loaded = false;
+  bool _initialized = false;
 
   @override
-  void initState() {
-    super.initState();
-    _loadSettings();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      _initialized = true;
+      _storage = AppProviders.of(context).storage;
+      _loadSettings();
+    }
   }
 
   @override
@@ -36,10 +42,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final hostMode = await _storage.read(StorageService.keyHostMode) ?? 'us';
-    final customHost = await _storage.read(StorageService.keyCustomHost) ?? '';
-    final projectId = await _storage.read(StorageService.keyProjectId) ?? '';
-    final apiKey = await _storage.read(StorageService.keyApiKey) ?? '';
+    final storage = _storage!;
+    final hostMode = await storage.read(StorageService.keyHostMode) ?? 'us';
+    final customHost = await storage.read(StorageService.keyCustomHost) ?? '';
+    final projectId = await storage.read(StorageService.keyProjectId) ?? '';
+    final apiKey = await storage.read(StorageService.keyApiKey) ?? '';
 
     if (!mounted) return;
     setState(() {
@@ -52,6 +59,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveSettings() async {
+    final storage = _storage!;
     final host = _effectiveHost;
     final projectId = _projectIdController.text.trim();
     final apiKey = _apiKeyController.text.trim();
@@ -61,11 +69,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    await _storage.write(StorageService.keyHost, host);
-    await _storage.write(StorageService.keyHostMode, _hostMode.storageValue);
-    await _storage.write(StorageService.keyCustomHost, _customHostController.text.trim());
-    await _storage.write(StorageService.keyProjectId, projectId);
-    await _storage.write(StorageService.keyApiKey, apiKey);
+    await storage.write(StorageService.keyHost, host);
+    await storage.write(StorageService.keyHostMode, _hostMode.storageValue);
+    await storage.write(StorageService.keyCustomHost, _customHostController.text.trim());
+    await storage.write(StorageService.keyProjectId, projectId);
+    await storage.write(StorageService.keyApiKey, apiKey);
 
     if (!mounted) return;
     _showSnackBar('Settings saved.');
